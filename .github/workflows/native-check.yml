@@ -1,0 +1,38 @@
+name: native-check
+
+# Compiles the TizenTube Cobalt home-screen classes against the Android 8.0 (API 26) and 14 (API 34)
+# SDKs. API 26 is TizenTube's minimum, so anything newer fails the API 26 build.
+on:
+  push:
+    branches: ['ci/native-check']
+
+permissions:
+  contents: read
+
+jobs:
+  javac:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compile
+        run: |
+          set -uo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-26" "platforms;android-34" > /dev/null
+          : > "$RUNNER_TEMP/errors.txt"
+          status=0
+          for api in 26 34; do
+            jar="$ANDROID_HOME/platforms/android-$api/android.jar"
+            if ! javac -Xlint:all,-options -Werror -source 8 -target 8 -bootclasspath "$jar" \
+                -d "$RUNNER_TEMP/out$api" $(find native/src -name '*.java') > "$RUNNER_TEMP/api$api.txt" 2>&1; then
+              status=1
+            fi
+            { echo "== API $api"; cat "$RUNNER_TEMP/api$api.txt"; } >> "$RUNNER_TEMP/errors.txt"
+          done
+          msg="$(head -60 "$RUNNER_TEMP/errors.txt" | sed -e 's/%/%25/g' | awk 'BEGIN { ORS = "%0A" } { print }')"
+          if [ "$status" -ne 0 ]; then echo "::error title=javac::$msg"; exit 1; fi
+          echo "::notice title=javac::$msg"
