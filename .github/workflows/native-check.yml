@@ -14,15 +14,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
       - name: Compile
         run: |
-          set -uo pipefail
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-26" "platforms;android-34" > /dev/null
+          set +e +o pipefail
+          SDKM="$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)"
+          (yes | "$SDKM" "platforms;android-26" "platforms;android-34") > "$RUNNER_TEMP/sdk.txt" 2>&1
+          ls "$ANDROID_HOME/platforms" > "$RUNNER_TEMP/platforms.txt"
           : > "$RUNNER_TEMP/errors.txt"
           status=0
           for api in 26 34; do
@@ -31,8 +33,9 @@ jobs:
                 -d "$RUNNER_TEMP/out$api" $(find native/src -name '*.java') > "$RUNNER_TEMP/api$api.txt" 2>&1; then
               status=1
             fi
-            { echo "== API $api"; cat "$RUNNER_TEMP/api$api.txt"; } >> "$RUNNER_TEMP/errors.txt"
+            { echo "== API $api"; [ -f "$jar" ] || echo "missing $jar"; cat "$RUNNER_TEMP/api$api.txt"; } >> "$RUNNER_TEMP/errors.txt"
           done
+          { echo "== platforms"; cat "$RUNNER_TEMP/platforms.txt"; tail -3 "$RUNNER_TEMP/sdk.txt"; } >> "$RUNNER_TEMP/errors.txt"
           msg="$(head -60 "$RUNNER_TEMP/errors.txt" | sed -e 's/%/%25/g' | awk 'BEGIN { ORS = "%0A" } { print }')"
           if [ "$status" -ne 0 ]; then echo "::error title=javac::$msg"; exit 1; fi
           echo "::notice title=javac::$msg"
