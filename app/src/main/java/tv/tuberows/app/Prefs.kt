@@ -42,6 +42,13 @@ class Prefs(context: Context) {
             .apply()
     }
 
+    /** When a row last actually changed (new videos), as opposed to when we last checked. */
+    val lastContentChange: Long get() = store.getLong("last_content_change", 0L)
+
+    fun recordContentChange() {
+        store.edit().putLong("last_content_change", System.currentTimeMillis()).apply()
+    }
+
     val status: String get() = store.getString("status", null) ?: "Not synced yet."
     val lastRun: Long get() = store.getLong("last_run", 0L)
 

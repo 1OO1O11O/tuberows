@@ -15,6 +15,7 @@ import androidx.tvprovider.media.tv.ChannelLogoUtils
 import androidx.tvprovider.media.tv.PreviewProgram
 import androidx.tvprovider.media.tv.TvContractCompat
 import androidx.tvprovider.media.tv.WatchNextProgram
+import java.security.MessageDigest
 
 /**
  * Copies SmartTube's home-screen rows into rows owned by this app, with every card
@@ -29,8 +30,8 @@ object Mirror {
         const val ID = "_id"
         const val PACKAGE = "package_name"
         const val TYPE = "type"
-        const val DISPLAY_NAME = "display_name"
         const val PROVIDER_ID = "internal_provider_id"
+        const val SYSTEM_KEY = "system_channel_key"
         const val CHANNEL_ID = "channel_id"
         const val INTENT_URI = "intent_uri"
         const val TITLE = "title"
@@ -71,6 +72,7 @@ object Mirror {
         val prefs = Prefs(context)
         val resolver = context.contentResolver
         val ownPackage = context.packageName
+        val now = System.currentTimeMillis()
 
         val sources = mutableListOf<Source>()
         val own = mutableMapOf<Config.Row, Long>()
@@ -80,7 +82,7 @@ object Mirror {
         val channels = try {
             resolver.query(TvContractCompat.Channels.CONTENT_URI, null, null, null, null)
         } catch (e: SecurityException) {
-            return finish(prefs, false, "No access to TV rows. Grant READ_TV_LISTINGS (the deploy script does this).", e)
+            return finish(prefs, false, "No access to TV rows. Open TizenTube Rows and press Grant access.", e)
         } ?: return finish(prefs, false, "TV provider unavailable on this device.")
 
         channels.use { c ->
@@ -88,6 +90,7 @@ object Mirror {
             val iPkg = c.getColumnIndex(Col.PACKAGE)
             val iType = c.getColumnIndex(Col.TYPE)
             val iProvider = c.getColumnIndex(Col.PROVIDER_ID)
+            val iKey = c.getColumnIndex(Col.SYSTEM_KEY)
             while (c.moveToNext()) {
                 val pkg = c.str(iPkg) ?: continue
                 visible[pkg] = (visible[pkg] ?: 0) + 1
@@ -104,7 +107,7 @@ object Mirror {
                         }
                     }
                     Config.isSourcePackage(pkg) && c.str(iType) == TYPE_PREVIEW -> {
-                        Config.Row.forSource(providerId)?.let { sources += Source(id, pkg, it) }
+                        Config.Row.forSource(providerId, c.str(iKey))?.let { sources += Source(id, pkg, it) }
                     }
                 }
             }
@@ -121,7 +124,7 @@ object Mirror {
         val programs = try {
             resolver.query(TvContractCompat.PreviewPrograms.CONTENT_URI, null, null, null, null)
         } catch (e: SecurityException) {
-            return finish(prefs, false, "No access to TV cards. Grant READ_TV_LISTINGS.", e)
+            return finish(prefs, false, "No access to TV cards. Open TizenTube Rows and press Grant access.", e)
         } ?: return finish(prefs, false, "TV provider returned no cursor for cards.")
 
         programs.use { c ->
@@ -156,22 +159,30 @@ object Mirror {
             }
         }
 
-        Log.i(
-            Config.TAG,
-            "Visible channel packages=$visible; SmartTube rows=${sources.map { "${it.row.label}@${it.pkg}" }}; " +
-                "cards seen=$programsSeen; unparsable=$skipped"
-        )
-
         if (sources.isNotEmpty()) prefs.sourcePackages = sources.map { it.pkg }.toSet()
 
         // If more than one SmartTube build is installed, use the fuller row. Ordered by SmartTube's weight.
         val best = mutableMapOf<Config.Row, Pair<Source, List<Card>>>()
+        val sourceCounts = mutableListOf<String>()
         for (row in Config.Row.entries) {
             val source = sources.filter { it.row == row }.maxByOrNull { cards[it.channelId]?.size ?: 0 } ?: continue
-            best[row] = source to cards[source.channelId].orEmpty()
-                .sortedByDescending { it.weight }
-                .distinctBy { it.videoId }
-                .take(Config.MAX_CARDS)
+            val unique = cards[source.channelId].orEmpty().sortedByDescending { it.weight }.distinctBy { it.videoId }
+            sourceCounts += "${row.label}=${unique.size}"
+            best[row] = source to unique.take(Config.MAX_CARDS)
+        }
+
+        Log.i(
+            Config.TAG,
+            "Visible channel packages=$visible; SmartTube rows=${sources.map { "${it.row.label}@${it.pkg}" }}; " +
+                "source cards (before cap ${Config.MAX_CARDS}): ${sourceCounts.joinToString()}; " +
+                "cards seen=$programsSeen; unparsable=$skipped"
+        )
+
+        // Fixed upload times: observe every visible card once, so bounds tighten even for rows that are off.
+        val uploads = UploadCache(context)
+        val shown = HashMap<String, String?>()
+        for ((_, list) in best.values) for (card in list) {
+            if (card.videoId !in shown) shown[card.videoId] = uploads.describe(card.videoId, card.description, now)
         }
 
         // 3. Reconcile each row.
@@ -196,26 +207,35 @@ object Mirror {
                 continue
             }
 
-            val signature = signatureOf(list)
+            val signature = signatureOf(list, uploads, now)
             if (ownId != null && signature == prefs.signature(row) && ownCounts[ownId] == list.size) {
                 lines += "${row.label}: ${list.size} cards (unchanged)"
                 continue
             }
 
             val channelId = ownId ?: createChannel(context, row)
-            writePrograms(context, channelId, list, source.pkg)
-            prefs.setSignature(row, signature)
-            lines += "${row.label}: ${list.size} cards"
+            val written = writePrograms(context, channelId, list, source.pkg, shown)
+            if (written == list.size) {
+                prefs.setSignature(row, signature)
+                prefs.recordContentChange()
+                lines += "${row.label}: ${list.size} cards"
+            } else {
+                // Leave the signature unset so the next sync (seconds away, triggered by this write) retries.
+                prefs.setSignature(row, null)
+                lines += "${row.label}: wrote $written of ${list.size}, will retry"
+            }
         }
 
         // 4. Watch Next: recent history to continue, plus new subscription uploads.
-        lines += runCatching { syncWatchNext(context, prefs, best) }
+        lines += runCatching { syncWatchNext(context, prefs, best, shown, uploads, now) }
             .getOrElse { Log.e(Config.TAG, "Watch Next sync failed", it); "Watch Next: failed (${it.javaClass.simpleName})" }
+
+        uploads.save()
 
         val summary = lines.joinToString("\n")
         val ok = sources.isNotEmpty()
         val header = if (ok) "Synced from ${sources.map { it.pkg }.distinct().joinToString()}" else
-            "SmartTube rows not visible. Check SmartTube is signed in and its home-screen channels are on."
+            "SmartTube rows not visible. Check SmartTube is signed in and its Channels service is on."
         return finish(prefs, ok, "$header\n$summary")
     }
 
@@ -228,8 +248,15 @@ object Mirror {
         return VIDEO_ID_IN_TEXT.find(raw)?.groupValues?.get(1)
     }
 
-    private fun signatureOf(list: List<Card>): String =
-        "${list.size}:" + list.joinToString("|") { "${it.videoId}~${it.title}" }.hashCode()
+    /**
+     * Everything that changes what a card shows, except view counts (which change constantly and
+     * would rewrite rows for nothing). The upload label is included so a tightened time is shown.
+     */
+    private fun signatureOf(list: List<Card>, uploads: UploadCache, now: Long): String =
+        sha256(list.joinToString("\n") { "${it.videoId}|${it.title}|${it.live}|${uploads.labelFor(it.videoId, now)}" })
+
+    private fun sha256(text: String): String =
+        MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 
     private fun createChannel(context: Context, row: Config.Row): Long {
         val pm = context.packageManager
@@ -255,17 +282,24 @@ object Mirror {
         return id
     }
 
-    private fun writePrograms(context: Context, channelId: Long, list: List<Card>, sourcePkg: String) {
+    /** Replaces a row's cards. Returns how many were inserted. */
+    private fun writePrograms(
+        context: Context, channelId: Long, list: List<Card>, sourcePkg: String, shown: Map<String, String?>,
+    ): Int {
         val resolver = context.contentResolver
         resolver.delete(TvContractCompat.buildPreviewProgramsUriForChannel(channelId), null, null)
         val values: Array<ContentValues> = list.mapIndexed { index, card ->
-            buildProgram(context, channelId, card, sourcePkg, weight = list.size - index).toContentValues()
+            buildProgram(context, channelId, card, shown[card.videoId], sourcePkg, weight = list.size - index).toContentValues()
         }.toTypedArray()
         val inserted = resolver.bulkInsert(TvContractCompat.PreviewPrograms.CONTENT_URI, values)
         Log.i(Config.TAG, "Wrote $inserted/${values.size} cards to channel $channelId")
+        return inserted
     }
 
-    private fun syncWatchNext(context: Context, prefs: Prefs, best: Map<Config.Row, Pair<Source, List<Card>>>): String {
+    private fun syncWatchNext(
+        context: Context, prefs: Prefs, best: Map<Config.Row, Pair<Source, List<Card>>>,
+        shown: Map<String, String?>, uploads: UploadCache, now: Long,
+    ): String {
         val resolver = context.contentResolver
         val ownIds = mutableListOf<Long>()
         resolver.query(TvContractCompat.WatchNextPrograms.CONTENT_URI, null, null, null, null)?.use { c ->
@@ -291,30 +325,33 @@ object Mirror {
         if (entries.isEmpty()) {
             return "Watch Next: no SmartTube cards" + if (ownIds.isNotEmpty()) " (kept previous)" else ""
         }
-        val signature = entries.joinToString("|") { "${it.second}:${it.first.videoId}" }
+        val signature = sha256(entries.joinToString("\n") {
+            "${it.second}|${it.first.videoId}|${it.first.title}|${uploads.labelFor(it.first.videoId, now)}"
+        })
         if (signature == prefs.watchNextSignature && ownIds.size == entries.size) {
             return "Watch Next: ${entries.size} (unchanged)"
         }
 
         ownIds.forEach { resolver.delete(TvContractCompat.buildWatchNextProgramUri(it), null, null) }
-        val now = System.currentTimeMillis()
         val values: Array<ContentValues> = entries.mapIndexed { index, (card, type, pkg) ->
             // Engagement time sets the order launchers show; keep SmartTube's order.
-            buildWatchNext(context, card, type, pkg, engagedAt = now - index * 60_000L).toContentValues()
+            buildWatchNext(context, card, shown[card.videoId], type, pkg, engagedAt = now - index * 60_000L).toContentValues()
         }.toTypedArray()
         val inserted = resolver.bulkInsert(TvContractCompat.WatchNextPrograms.CONTENT_URI, values)
-        prefs.watchNextSignature = signature
+        prefs.watchNextSignature = if (inserted == values.size) signature else null
         Log.i(Config.TAG, "Wrote $inserted/${values.size} Watch Next entries")
         return "Watch Next: ${continueCards.size} continue, ${newCards.size} new"
     }
 
-    private fun buildWatchNext(context: Context, card: Card, type: Int, sourcePkg: String, engagedAt: Long): WatchNextProgram {
+    private fun buildWatchNext(
+        context: Context, card: Card, description: String?, type: Int, sourcePkg: String, engagedAt: Long,
+    ): WatchNextProgram {
         val builder = WatchNextProgram.Builder()
         builder.setWatchNextType(type)
         builder.setLastEngagementTimeUtcMillis(engagedAt)
         builder.setType(TYPE_CLIP)
         builder.setTitle(card.title ?: "YouTube video")
-        card.description?.let { builder.setDescription(it) }
+        description?.let { builder.setDescription(it) }
         builder.setPosterArtUri(Uri.parse(posterFor(card)))
         builder.setPosterArtAspectRatio(ASPECT_RATIO_16_9)
         builder.setIntent(openIntent(context, card.videoId, sourcePkg))
@@ -332,12 +369,14 @@ object Mirror {
     private fun posterFor(card: Card): String =
         card.poster?.takeIf { it.startsWith("https://") } ?: "https://i.ytimg.com/vi/${card.videoId}/hqdefault.jpg"
 
-    private fun buildProgram(context: Context, channelId: Long, card: Card, sourcePkg: String, weight: Int): PreviewProgram {
+    private fun buildProgram(
+        context: Context, channelId: Long, card: Card, description: String?, sourcePkg: String, weight: Int,
+    ): PreviewProgram {
         val builder = PreviewProgram.Builder()
         builder.setChannelId(channelId)
         builder.setType(TYPE_CLIP)
         builder.setTitle(card.title ?: "YouTube video")
-        card.description?.let { builder.setDescription(it) }
+        description?.let { builder.setDescription(it) }
         builder.setPosterArtUri(Uri.parse(posterFor(card)))
         builder.setPosterArtAspectRatio(ASPECT_RATIO_16_9)
         builder.setIntent(openIntent(context, card.videoId, sourcePkg))

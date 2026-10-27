@@ -64,16 +64,17 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         root.addView(spacer(16))
 
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.START }
+        // First, so it's the focused button on a fresh install.
+        grantButton = button("Grant access") {
+            requestPermissions(arrayOf(Config.READ_TV_LISTINGS), REQUEST_PERMISSION)
+        }
+        actions.addView(grantButton)
         actions.addView(button("Sync now") { Scheduler.syncNow(this) })
         actions.addView(button("Refresh SmartTube") {
             if (SmartTube.nudgeNow(this, "manual", force = true)) {
                 Toast.makeText(this, "SmartTube is refreshing; rows update in about a minute", Toast.LENGTH_SHORT).show()
             }
         })
-        grantButton = button("Grant access") {
-            requestPermissions(arrayOf(Config.READ_TV_LISTINGS), REQUEST_PERMISSION)
-        }
-        actions.addView(grantButton)
         actions.addView(button("Open TizenTube") {
             packageManager.getLeanbackLaunchIntentForPackage(Config.TIZENTUBE)?.let { startActivity(it) }
         })
@@ -97,6 +98,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         Scheduler.syncNow(this)
         SmartTube.request(this, "app opened")
         render()
+        if (checkSelfPermission(Config.READ_TV_LISTINGS) != PackageManager.PERMISSION_GRANTED) grantButton.requestFocus()
     }
 
     override fun onPause() {
@@ -118,18 +120,31 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         val granted = checkSelfPermission(Config.READ_TV_LISTINGS) == PackageManager.PERMISSION_GRANTED
         val tizenTube = packageManager.getLeanbackLaunchIntentForPackage(Config.TIZENTUBE) != null
         grantButton.visibility = if (granted) View.GONE else View.VISIBLE
-        val last = ago(prefs.lastRun)
+        val now = System.currentTimeMillis()
         val nudge = if (prefs.lastNudge > 0) "${ago(prefs.lastNudge)} (${prefs.lastNudgeReason})" else "never"
+        val changed = prefs.lastContentChange
+        val stale = changed > 0 && now - changed > Config.STALE_WARNING_MS
         val power = getSystemService(PowerManager::class.java)
         val smartTube = prefs.sourcePackages.ifEmpty { SmartTube.installedPackages(this) }
-        fun exempt(pkg: String) = if (power?.isIgnoringBatteryOptimizations(pkg) == true) "exempt" else "NOT exempt"
+        fun isExempt(pkg: String) = power?.isIgnoringBatteryOptimizations(pkg) == true
+        fun fix(pkg: String) = "  Fix: adb shell dumpsys deviceidle whitelist +$pkg"
+
         statusView.text = buildString {
-            appendLine("Read access : ${if (granted) "granted" else "MISSING"}")
-            appendLine("TizenTube   : ${if (tizenTube) "installed" else "NOT FOUND"}")
-            appendLine("Last sync   : $last")
-            appendLine("SmartTube   : refreshed $nudge")
-            appendLine("Power       : TubeRows ${exempt(packageName)}" +
-                smartTube.joinToString("") { ", SmartTube ${exempt(it)}" })
+            appendLine("Read access : ${if (granted) "granted" else "MISSING: press Grant access above"}")
+            appendLine("TizenTube   : ${if (tizenTube) "installed" else "NOT FOUND (videos open in SmartTube)"}")
+            appendLine("SmartTube   : ${if (smartTube.isEmpty()) "NOT FOUND" else smartTube.joinToString()}")
+            appendLine("Last sync   : ${ago(prefs.lastRun)}")
+            appendLine("Refreshed   : $nudge")
+            appendLine("New content : ${ago(changed)}" +
+                if (stale) "  STALE: SmartTube may not be refreshing (signed in? exempt below?)" else "")
+            appendLine()
+            appendLine("Battery exemption (keeps background refreshes running):")
+            for (pkg in smartTube) {
+                if (isExempt(pkg)) appendLine("  SmartTube ($pkg): exempt")
+                else { appendLine("  SmartTube ($pkg): NOT exempt, rows will go stale"); appendLine(fix(pkg)) }
+            }
+            if (isExempt(packageName)) appendLine("  TubeRows: exempt")
+            else { appendLine("  TubeRows: not exempt (optional; opening cards keeps it active)"); appendLine(fix(packageName)) }
             appendLine()
             append(prefs.status)
         }

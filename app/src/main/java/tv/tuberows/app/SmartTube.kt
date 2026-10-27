@@ -2,6 +2,7 @@ package tv.tuberows.app
 
 import android.content.Context
 import android.content.Intent
+import android.os.PowerManager
 import android.util.Log
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -59,6 +60,17 @@ object SmartTube {
         prefs.recordNudge(reason)
         Log.i(Config.TAG, "SmartTube refresh requested ($reason) -> $targets")
         return true
+    }
+
+    /**
+     * Wake catch-up: Android runs our overdue jobs a few minutes after the TV wakes, but SmartTube's own
+     * job can take much longer. If the screen is on and SmartTube's last refresh is old, ask now.
+     */
+    fun catchUp(context: Context, reason: String) {
+        val power = context.getSystemService(PowerManager::class.java)
+        if (power?.isInteractive == false) return
+        if (System.currentTimeMillis() - Prefs(context).lastNudge < Config.CATCH_UP_AFTER_MS) return
+        request(context, reason)
     }
 
     fun installedPackages(context: Context): Set<String> =

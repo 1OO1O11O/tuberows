@@ -3,7 +3,6 @@ package tv.tuberows.app
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.PowerManager
 import android.util.Log
 import androidx.tvprovider.media.tv.TvContractCompat
 import androidx.work.Constraints
@@ -32,12 +31,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : Worker(context, p
             Log.e(Config.TAG, "Sync failed", t)
             Prefs(applicationContext).recordRun("Sync failed: ${t.javaClass.simpleName}: ${t.message}")
         }
-        // Hourly backstop while the screen is on: keep SmartTube's data fresh even if nobody opens anything.
-        if (inputData.getBoolean(KEY_PERIODIC, false) &&
-            applicationContext.getSystemService(PowerManager::class.java)?.isInteractive != false
-        ) {
-            SmartTube.request(applicationContext, "hourly")
-        }
+        // Every run doubles as a freshness check: after wake (overdue jobs) and hourly (periodic job),
+        // refresh SmartTube if the screen is on and its last refresh is over 30 minutes old.
+        SmartTube.catchUp(applicationContext, if (inputData.getBoolean(KEY_PERIODIC, false)) "hourly" else "catch-up")
         // Content triggers fire once, so the triggered run re-arms the next one.
         if (inputData.getBoolean(KEY_FROM_TRIGGER, false)) Scheduler.armTrigger(applicationContext, chained = true)
         // Always succeed: a failed run is recorded on the status screen, not retried in a loop.

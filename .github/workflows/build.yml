@@ -65,11 +65,13 @@ jobs:
             echo "::notice::No signing secrets: building a debug-signed test APK."
           fi
 
-          # Surface compiler/Gradle errors as one annotation, readable without the raw log.
-          if ! gradle --no-daemon assembleRelease -PversionCode=${{ github.run_number }} -PversionName="$VERSION" 2>&1 \
+          # Unit tests, then the APK. Compiler errors and failed tests are surfaced as one annotation.
+          if ! gradle --no-daemon testReleaseUnitTest assembleRelease \
+              -PversionCode=${{ github.run_number }} -PversionName="$VERSION" 2>&1 \
               | tee "$RUNNER_TEMP/gradle.log"; then
             {
               grep -E '^e: ' "$RUNNER_TEMP/gradle.log" | head -40 || true
+              grep -E -A4 ' FAILED$' "$RUNNER_TEMP/gradle.log" | head -40 || true
               awk '/What went wrong/ { on = 1 } on && /^\* Try:/ { exit } on' "$RUNNER_TEMP/gradle.log" | head -25 || true
             } > "$RUNNER_TEMP/errors.txt"
             msg="$(sed -e 's/%/%25/g' "$RUNNER_TEMP/errors.txt" | awk 'BEGIN { ORS = "%0A" } { print }')"
