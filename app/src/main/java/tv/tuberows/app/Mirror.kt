@@ -1,5 +1,6 @@
 package tv.tuberows.app
 
+import android.content.ContentProviderOperation
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
@@ -66,6 +67,13 @@ object Mirror {
 
     private data class Source(val channelId: Long, val pkg: String, val row: Config.Row)
 
+    /** One of our own cards as it is in the provider now, keyed by video ID for in-place updates. */
+    private data class Existing(val id: Long, val videoId: String?, val values: Map<String, String?>)
+
+    /** Columns compared to decide whether an existing card needs updating. Numbers compare as numbers. */
+    private val COMPARED_TEXT = listOf(Col.TITLE, Col.DESCRIPTION, Col.POSTER, Col.INTENT_URI)
+    private val COMPARED_NUMBERS = listOf(Col.WEIGHT, Col.LIVE, Col.DURATION)
+
     // Periodic, trigger and "now" workers can run in parallel on WorkManager's pool;
     // serialise them so two runs never both create the same row.
     @Synchronized
@@ -118,7 +126,7 @@ object Mirror {
         val sourceIds = sources.associateBy { it.channelId }
         val ownIds = own.values.toSet()
         val cards = mutableMapOf<Long, MutableList<Card>>()
-        val ownCounts = mutableMapOf<Long, Int>()
+        val existing = mutableMapOf<Long, MutableList<Existing>>()
         var programsSeen = 0
         var skipped = 0
 
@@ -137,11 +145,14 @@ object Mirror {
             val iDuration = c.getColumnIndex(Col.DURATION)
             val iLive = c.getColumnIndex(Col.LIVE)
             val iWeight = c.getColumnIndex(Col.WEIGHT)
+            val iId = c.getColumnIndex(Col.ID)
+            val iProvider = c.getColumnIndex(Col.PROVIDER_ID)
             while (c.moveToNext()) {
                 programsSeen++
                 val channelId = c.getLong(iChannel)
                 if (channelId in ownIds) {
-                    ownCounts[channelId] = (ownCounts[channelId] ?: 0) + 1
+                    val snapshot = (COMPARED_TEXT + COMPARED_NUMBERS).associateWith { c.str(c.getColumnIndex(it)) }
+                    existing.getOrPut(channelId) { mutableListOf() } += Existing(c.getLong(iId), c.str(iProvider), snapshot)
                     continue
                 }
                 if (channelId !in sourceIds) continue
@@ -217,22 +228,23 @@ object Mirror {
             val signature = signatureOf(list)
             val sameContent = signature == prefs.signature(row)
             val failures = if (sameContent) prefs.writeFailures(row) else 0
-            if (ownId != null && sameContent && (ownCounts[ownId] == list.size || failures >= MAX_WRITE_RETRIES)) {
+            val ownCount = ownId?.let { existing[it]?.size } ?: 0
+            if (ownId != null && sameContent && (ownCount == list.size || failures >= MAX_WRITE_RETRIES)) {
                 lines += "${row.label}: ${list.size} cards (unchanged)"
                 continue
             }
 
             val channelId = ownId ?: createChannel(context, row)
-            val written = writePrograms(context, channelId, list, source.pkg, shown)
+            val result = reconcile(context, channelId, list, source.pkg, shown, existing[channelId].orEmpty())
             prefs.setSignature(row, signature)
-            if (written == list.size) {
+            if (result != null) {
                 prefs.setWriteFailures(row, 0)
-                lines += "${row.label}: ${list.size} cards"
+                lines += "${row.label}: ${list.size} cards ($result)"
             } else {
                 // Our write fires the content trigger, so the next sync retries within seconds; stop after a few
                 // tries so a provider that keeps refusing isn't hammered. New content gets a fresh set of tries.
                 prefs.setWriteFailures(row, failures + 1)
-                lines += "${row.label}: wrote $written of ${list.size}" +
+                lines += "${row.label}: write failed" +
                     if (failures + 1 >= MAX_WRITE_RETRIES) ", giving up until the row changes" else ", will retry"
             }
         }
@@ -296,19 +308,70 @@ object Mirror {
         return id
     }
 
-    /** Replaces a row's cards. Returns how many were inserted. */
-    private fun writePrograms(
-        context: Context, channelId: Long, list: List<Card>, sourcePkg: String, shown: Map<String, String?>,
-    ): Int {
+    /**
+     * Brings a row's cards in line with [list] in place: inserts new videos, deletes removed ones, and
+     * updates only cards whose text, order or details changed. Unchanged cards keep their identity, so
+     * launchers don't redraw the whole row. Returns a short summary, or null if the provider refused.
+     */
+    private fun reconcile(
+        context: Context, channelId: Long, list: List<Card>, sourcePkg: String,
+        shown: Map<String, String?>, current: List<Existing>,
+    ): String? {
         val resolver = context.contentResolver
+        val ops = ArrayList<ContentProviderOperation>()
+        val byVideo = HashMap<String, Existing>()
+        for (e in current) {
+            // Cards without a video ID, or duplicates, can't be matched: remove them.
+            if (e.videoId == null || e.videoId in byVideo) ops += delete(e.id) else byVideo[e.videoId] = e
+        }
+        val wanted = list.mapTo(HashSet()) { it.videoId }
+        var removed = ops.size
+        for ((videoId, e) in byVideo) if (videoId !in wanted) { ops += delete(e.id); removed++ }
+
+        var added = 0
+        var updated = 0
+        list.forEachIndexed { index, card ->
+            val values = buildProgram(context, channelId, card, shown[card.videoId], sourcePkg, weight = list.size - index)
+                .toContentValues()
+            val e = byVideo[card.videoId]
+            when {
+                e == null -> {
+                    ops += ContentProviderOperation.newInsert(TvContractCompat.PreviewPrograms.CONTENT_URI).withValues(values).build()
+                    added++
+                }
+                differs(e, values) -> {
+                    ops += ContentProviderOperation.newUpdate(TvContractCompat.buildPreviewProgramUri(e.id)).withValues(values).build()
+                    updated++
+                }
+            }
+        }
+        val summary = "$added new, $updated updated, $removed removed"
+        if (ops.isEmpty()) return "no changes"
+
+        try {
+            resolver.applyBatch(TvContractCompat.AUTHORITY, ops)
+            Log.i(Config.TAG, "Channel $channelId: $summary")
+            return summary
+        } catch (e: Exception) {
+            // Some TV builds may not accept batches; fall back to replacing the row.
+            Log.w(Config.TAG, "Batch update refused for channel $channelId, rewriting the row", e)
+        }
         resolver.delete(TvContractCompat.buildPreviewProgramsUriForChannel(channelId), null, null)
         val values: Array<ContentValues> = list.mapIndexed { index, card ->
             buildProgram(context, channelId, card, shown[card.videoId], sourcePkg, weight = list.size - index).toContentValues()
         }.toTypedArray()
         val inserted = resolver.bulkInsert(TvContractCompat.PreviewPrograms.CONTENT_URI, values)
-        Log.i(Config.TAG, "Wrote $inserted/${values.size} cards to channel $channelId")
-        return inserted
+        Log.i(Config.TAG, "Rewrote $inserted/${values.size} cards to channel $channelId")
+        return if (inserted == values.size) "rewritten" else null
     }
+
+    private fun delete(programId: Long): ContentProviderOperation =
+        ContentProviderOperation.newDelete(TvContractCompat.buildPreviewProgramUri(programId)).build()
+
+    /** True if what we'd write differs from what the card holds now. */
+    private fun differs(e: Existing, values: ContentValues): Boolean =
+        COMPARED_TEXT.any { (values.getAsString(it) ?: "") != (e.values[it] ?: "") } ||
+            COMPARED_NUMBERS.any { (values.getAsString(it)?.toLongOrNull() ?: 0L) != (e.values[it]?.toLongOrNull() ?: 0L) }
 
     private fun syncWatchNext(
         context: Context, prefs: Prefs, best: Map<Config.Row, Pair<Source, List<Card>>>,

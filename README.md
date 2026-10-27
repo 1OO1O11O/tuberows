@@ -17,7 +17,8 @@ TizenTube Cobalt doesn't publish home-screen rows, so launchers like Projectivy 
    - Asks SmartTube to refresh 2 minutes after you open a video (so it shows in History), and when you open the app.
    - After the TV wakes, and every hour while the screen is on, asks SmartTube to refresh, unless SmartTube refreshed or was asked to in the last 30 minutes. Rows are usually fresh within a few minutes of turning the TV on.
    - Never asks SmartTube to refresh more than once every 10 minutes (the **Refresh SmartTube** button on the status screen is the only exception). SmartTube's own 15-minute refresh also keeps running.
-   - Card text is SmartTube's own (channel, views, "11 minutes ago"). A row is rewritten when its videos change or its "x ago" wording does, so that text is at most one SmartTube refresh behind. Rows that haven't changed are left alone.
+   - Card text is SmartTube's own (channel, views, "11 minutes ago"). A row is updated when its videos change or its "x ago" wording does, so that text is at most one SmartTube refresh behind. The "x ago" check understands English; in other languages, text updates come with new videos.
+   - Updates happen in place: only new, removed or changed cards are touched, so your launcher doesn't redraw the whole row or lose your place.
 6. **Shows a status screen** when you open *TizenTube Rows*: row toggles, read access, which TizenTube and SmartTube it found, last sync, when it last asked SmartTube to refresh, when SmartTube's data last changed (with a warning if it hasn't for a day), and whether each app is exempt from battery optimisation, with the exact command to fix it if not.
 
 ## What it doesn't do

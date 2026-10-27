@@ -6,6 +6,7 @@ Your SmartTube home-screen rows (Subscriptions, Recommended, History), mirrored 
 
 **What's new in v1.2.1**
 - Cards show SmartTube's own text again ("Channel • 1.2K views • 11 minutes ago"), now kept within one SmartTube refresh of current instead of freezing until the videos change
+- Rows update in place: only new, removed or changed cards are touched, so the launcher doesn't redraw whole rows or lose your place
 
 **v1.2.0**
 - **Fresh rows after waking the TV:** unless SmartTube refreshed or was asked to in the last 30 minutes, it's asked as soon as the TV is on (usually within a few minutes), and every hour while the screen is on
