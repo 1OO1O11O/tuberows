@@ -1,0 +1,116 @@
+name: build
+
+# Pushes to main build a test APK. Tags like v1.2.3 build a release-signed APK and publish a GitHub Release.
+# No pull_request trigger: signing secrets are never exposed to forked code.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write   # only used by the release step on tags
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build APK
+        id: build
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD_RAW: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="dev.${{ github.run_number }}"
+          fi
+
+          if [ -n "${KEYSTORE_B64:-}" ] && [ -n "${KEYSTORE_PASSWORD_RAW:-}" ]; then
+            # Secrets set from Windows can carry a trailing CRLF; strip it.
+            export KEYSTORE_PASSWORD="$(printf '%s' "$KEYSTORE_PASSWORD_RAW" | tr -d '\r\n')"
+            export KEYSTORE_FILE="$RUNNER_TEMP/release.p12"
+            printf '%s' "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > "$KEYSTORE_FILE"
+            KEY_ALIAS="$(keytool -list -storetype PKCS12 -keystore "$KEYSTORE_FILE" -storepass:env KEYSTORE_PASSWORD \
+              | awk -F, '/PrivateKeyEntry/ && !found { print $1; found = 1 }')"
+            if [ -z "$KEY_ALIAS" ]; then echo "::error::No private key found in the signing keystore"; exit 1; fi
+            export KEY_ALIAS
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "::error::Releases need the KEYSTORE_B64 and KEYSTORE_PASSWORD secrets (see README, Build it yourself)."
+            exit 1
+          else
+            echo "::notice::No signing secrets: building a debug-signed test APK."
+          fi
+
+          # Surface compiler/Gradle errors as one annotation, readable without the raw log.
+          if ! gradle --no-daemon assembleRelease -PversionCode=${{ github.run_number }} -PversionName="$VERSION" 2>&1 \
+              | tee "$RUNNER_TEMP/gradle.log"; then
+            {
+              grep -E '^e: ' "$RUNNER_TEMP/gradle.log" | head -40 || true
+              awk '/What went wrong/ { on = 1 } on && /^\* Try:/ { exit } on' "$RUNNER_TEMP/gradle.log" | head -25 || true
+            } > "$RUNNER_TEMP/errors.txt"
+            msg="$(sed -e 's/%/%25/g' "$RUNNER_TEMP/errors.txt" | awk 'BEGIN { ORS = "%0A" } { print }')"
+            echo "::error title=Build errors::${msg:-No error lines found; see the raw log}"
+            rm -f "${KEYSTORE_FILE:-/nonexistent}"
+            exit 1
+          fi
+          rm -f "${KEYSTORE_FILE:-/nonexistent}"
+
+          APK="TizenTube-Recommendations-v${VERSION}.apk"
+          mv app/build/outputs/apk/release/app-release.apk "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: |
+            ${{ steps.build.outputs.apk }}
+            ${{ steps.build.outputs.apk }}.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK: ${{ steps.build.outputs.apk }}
+        run: |
+          set -euo pipefail
+          cp .github/RELEASE_NOTES.md "$RUNNER_TEMP/notes.md"
+          {
+            echo
+            echo "### Verify your download"
+            echo
+            echo '```'
+            echo "SHA-256  $(cut -d' ' -f1 "$APK.sha256")  $APK"
+            BT="$(ls -d "${ANDROID_HOME:-/nonexistent}"/build-tools/* 2>/dev/null | sort -V | tail -1 || true)"
+            if [ -n "$BT" ] && [ -x "$BT/apksigner" ]; then
+              "$BT/apksigner" verify --print-certs "$APK" | grep -m1 'SHA-256 digest' | sed 's/^Signer #1 certificate /Signing cert /' || true
+            fi
+            echo '```'
+          } >> "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
+            --title "TizenTube Recommendations ${GITHUB_REF_NAME}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag
