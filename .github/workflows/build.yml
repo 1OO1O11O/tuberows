@@ -1,11 +1,14 @@
 name: build
 
-# Pushes to main build a test APK. Tags like v1.2.3 build a release-signed APK and publish a GitHub Release.
+# Pushes to main build a test APK. A v1.2.3 tag, or a release published on GitHub with a v* tag,
+# builds a release-signed APK and attaches it (with its SHA-256) to that release.
 # No pull_request trigger: signing secrets are never exposed to forked code.
 on:
   push:
     branches: [main]
     tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
 
 concurrency:
@@ -110,7 +113,12 @@ jobs:
             fi
             echo '```'
           } >> "$RUNNER_TEMP/notes.md"
-          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
-            --title "TizenTube Recommendations ${GITHUB_REF_NAME}" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
-            --verify-tag
+          TITLE="TizenTube Recommendations ${GITHUB_REF_NAME}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Release created on GitHub (or a re-run): attach the build and set notes/title.
+            gh release upload "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
+              --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+          fi

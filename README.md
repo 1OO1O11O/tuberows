@@ -141,7 +141,7 @@ Android normally deletes an uninstalled app's rows and Watch Next entries by its
 
 ## Build it yourself
 
-Pushes to `main` build a test APK, signed with a throwaway debug key if no signing secrets are set. Pushing a tag such as `v1.2.0` builds a release-signed APK and publishes a GitHub Release.
+Pushes to `main` build a test APK, signed with a throwaway debug key if no signing secrets are set. Pushing a tag such as `v1.2.0`, or publishing a release on GitHub with a new `v1.2.0` tag, builds a release-signed APK and attaches it to the GitHub Release.
 
 To sign your own builds, create a PKCS12 keystore and add two repository secrets:
 
