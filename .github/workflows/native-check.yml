@@ -29,13 +29,13 @@ jobs:
           status=0
           for api in 26 34; do
             jar="$ANDROID_HOME/platforms/android-$api/android.jar"
-            if ! javac -Xlint:all,-options -Werror -source 8 -target 8 -bootclasspath "$jar" \
+            if ! javac -Xlint:all,-options -Werror --release 8 -cp "$jar" \
                 -d "$RUNNER_TEMP/out$api" $(find native/src -name '*.java') > "$RUNNER_TEMP/api$api.txt" 2>&1; then
               status=1
             fi
             { echo "== API $api"; [ -f "$jar" ] || echo "missing $jar"; cat "$RUNNER_TEMP/api$api.txt"; } >> "$RUNNER_TEMP/errors.txt"
           done
-          { echo "== platforms"; cat "$RUNNER_TEMP/platforms.txt"; tail -3 "$RUNNER_TEMP/sdk.txt"; } >> "$RUNNER_TEMP/errors.txt"
+          { echo "== platforms"; grep -E "android-(26|34)$" "$RUNNER_TEMP/platforms.txt"; tail -1 "$RUNNER_TEMP/sdk.txt"; } >> "$RUNNER_TEMP/errors.txt"
           msg="$(head -60 "$RUNNER_TEMP/errors.txt" | sed -e 's/%/%25/g' | awk 'BEGIN { ORS = "%0A" } { print }')"
           if [ "$status" -ne 0 ]; then echo "::error title=javac::$msg"; exit 1; fi
           echo "::notice title=javac::$msg"
