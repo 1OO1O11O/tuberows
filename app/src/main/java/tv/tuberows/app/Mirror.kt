@@ -188,12 +188,9 @@ object Mirror {
             if (prefs.recordSourceSignature(sha256(raw))) Log.i(Config.TAG, "SmartTube data changed")
         }
 
-        // Fixed upload times: observe every visible card once, so bounds tighten even for rows that are off.
-        val uploads = UploadCache(context)
+        // Cards show SmartTube's own description ("Channel • 1.2K views • 11 minutes ago").
         val shown = HashMap<String, String?>()
-        for ((_, list) in best.values) for (card in list) {
-            if (card.videoId !in shown) shown[card.videoId] = uploads.describe(card.videoId, card.description, now)
-        }
+        for ((_, list) in best.values) for (card in list) shown.putIfAbsent(card.videoId, card.description)
 
         // 3. Reconcile each row.
         val lines = mutableListOf<String>()
@@ -217,7 +214,7 @@ object Mirror {
                 continue
             }
 
-            val signature = signatureOf(list, uploads, now)
+            val signature = signatureOf(list)
             val sameContent = signature == prefs.signature(row)
             val failures = if (sameContent) prefs.writeFailures(row) else 0
             if (ownId != null && sameContent && (ownCounts[ownId] == list.size || failures >= MAX_WRITE_RETRIES)) {
@@ -241,10 +238,8 @@ object Mirror {
         }
 
         // 4. Watch Next: recent history to continue, plus new subscription uploads.
-        lines += runCatching { syncWatchNext(context, prefs, best, shown, uploads, now) }
+        lines += runCatching { syncWatchNext(context, prefs, best, shown, now) }
             .getOrElse { Log.e(Config.TAG, "Watch Next sync failed", it); "Watch Next: failed (${it.javaClass.simpleName})" }
-
-        uploads.save()
 
         val summary = lines.joinToString("\n")
         val ok = sources.isNotEmpty()
@@ -263,11 +258,16 @@ object Mirror {
     }
 
     /**
-     * Everything that changes what a card shows, except view counts (which change constantly and
-     * would rewrite rows for nothing). The upload label is included so a tightened time is shown.
+     * What a card shows, minus view counts (which change constantly). The "x ago" wording is included,
+     * so it stays within one SmartTube refresh of correct instead of freezing until the videos change.
      */
-    private fun signatureOf(list: List<Card>, uploads: UploadCache, now: Long): String =
-        sha256(list.joinToString("\n") { "${it.videoId}|${it.title}|${it.live}|${uploads.labelFor(it.videoId, now)}" })
+    private fun signatureOf(list: List<Card>): String =
+        sha256(list.joinToString("\n") { "${it.videoId}|${it.title}|${it.live}|${agoOf(it.description)}" })
+
+    private val AGO = Regex("\\d+[\\s\\u00A0\\u202F]+\\p{L}+[\\s\\u00A0\\u202F]+ago\\b", RegexOption.IGNORE_CASE)
+
+    /** The "11 minutes ago" part of SmartTube's description, if it has one in English. */
+    private fun agoOf(description: String?): String? = description?.let { AGO.find(it)?.value }
 
     private fun sha256(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
@@ -312,7 +312,7 @@ object Mirror {
 
     private fun syncWatchNext(
         context: Context, prefs: Prefs, best: Map<Config.Row, Pair<Source, List<Card>>>,
-        shown: Map<String, String?>, uploads: UploadCache, now: Long,
+        shown: Map<String, String?>, now: Long,
     ): String {
         val resolver = context.contentResolver
         val ownIds = mutableListOf<Long>()
@@ -340,7 +340,7 @@ object Mirror {
             return "Watch Next: no SmartTube cards" + if (ownIds.isNotEmpty()) " (kept previous)" else ""
         }
         val signature = sha256(entries.joinToString("\n") {
-            "${it.second}|${it.first.videoId}|${it.first.title}|${uploads.labelFor(it.first.videoId, now)}"
+            "${it.second}|${it.first.videoId}|${it.first.title}|${agoOf(it.first.description)}"
         })
         if (signature == prefs.watchNextSignature && ownIds.size == entries.size) {
             return "Watch Next: ${entries.size} (unchanged)"

@@ -23,6 +23,8 @@ class TubeRowsApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // v1.2.0 kept upload times here; that feature is gone.
+        deleteSharedPreferences("upload_times")
         // System broadcasts are delivered to NOT_EXPORTED receivers; nothing else can reach this one.
         ContextCompat.registerReceiver(
             this, screenOn, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED,

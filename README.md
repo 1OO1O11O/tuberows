@@ -11,15 +11,14 @@ TizenTube Cobalt doesn't publish home-screen rows, so launchers like Projectivy 
 1. **Reads SmartTube's home-screen rows** (Subscriptions, Recommended, History) from Android's TV provider, the same shared database launchers read from.
 2. **Publishes its own copies of those rows**, with every card SmartTube provides (up to 100). Your launcher decides how many to show; Projectivy shows 30 per row. Subscriptions and Recommended are on by default. History is off by default; turn it on in the app if you want it.
 3. **Opens every video in TizenTube Cobalt.** If TizenTube isn't installed, the video opens in SmartTube instead.
-4. **Shows when each video was uploaded as a fixed time.** YouTube's "1 hour ago" becomes "Uploaded ~7 pm, 27 Oct", so it stays correct however long a card sits in a row. English only; other languages are shown as SmartTube provides them.
-5. **Fills Watch Next** with up to 3 of your most recent History videos (*Continue*) and up to 5 new uploads from your subscriptions (*New*). This works even with the History row off, and can be turned off.
-6. **Keeps the rows current:**
+4. **Fills Watch Next** with up to 3 of your most recent History videos (*Continue*) and up to 5 new uploads from your subscriptions (*New*). This works even with the History row off, and can be turned off.
+5. **Keeps the rows current:**
    - Copies SmartTube's changes about 20 seconds after SmartTube updates its rows.
    - Asks SmartTube to refresh 2 minutes after you open a video (so it shows in History), and when you open the app.
    - After the TV wakes, and every hour while the screen is on, asks SmartTube to refresh, unless SmartTube refreshed or was asked to in the last 30 minutes. Rows are usually fresh within a few minutes of turning the TV on.
    - Never asks SmartTube to refresh more than once every 10 minutes (the **Refresh SmartTube** button on the status screen is the only exception). SmartTube's own 15-minute refresh also keeps running.
-   - Rows that haven't changed are not rewritten.
-7. **Shows a status screen** when you open *TizenTube Rows*: row toggles, read access, which TizenTube and SmartTube it found, last sync, when it last asked SmartTube to refresh, when SmartTube's data last changed (with a warning if it hasn't for a day), and whether each app is exempt from battery optimisation, with the exact command to fix it if not.
+   - Card text is SmartTube's own (channel, views, "11 minutes ago"). A row is rewritten when its videos change or its "x ago" wording does, so that text is at most one SmartTube refresh behind. Rows that haven't changed are left alone.
+6. **Shows a status screen** when you open *TizenTube Rows*: row toggles, read access, which TizenTube and SmartTube it found, last sync, when it last asked SmartTube to refresh, when SmartTube's data last changed (with a warning if it hasn't for a day), and whether each app is exempt from battery optimisation, with the exact command to fix it if not.
 
 ## What it doesn't do
 
@@ -85,7 +84,7 @@ adb pair 192.168.1.50:41923
 
 # Install (use the file name you downloaded). -g grants the permission,
 # so you can skip the Grant access button
-adb install -r -g TizenTube-Recommendations-v1.2.0.apk
+adb install -r -g TizenTube-Recommendations-v1.2.1.apk
 
 # Find SmartTube's package name (it differs between builds)
 adb shell "pm list packages | grep -iE 'smarttube|teamsmart|liskovsoft'"
@@ -160,12 +159,12 @@ Android normally deletes an uninstalled app's rows and Watch Next entries by its
 
 - **It depends on how SmartTube publishes its rows.** If SmartTube changes that, rows may stop updating until this app is updated. A [weekly check](.github/workflows/upstream-check.yml) watches SmartTube's source for exactly this.
 - **The content is SmartTube's.** Recommendations come from the account SmartTube is signed in to.
-- **Upload times are approximate.** YouTube only says "1 hour ago" or "2 days ago", so a new card's time can be up to an hour out, and a date shown without a time up to a day out. It sharpens on its own: when a refresh catches YouTube's wording tick over ("1 hour" to "2 hours"), the time is pinned to within about 15 minutes. It never goes stale either way.
+- **"x ago" text is a snapshot.** It's correct as of SmartTube's last refresh, so it can lag by up to about 15 minutes while the TV is on, and by however long the TV was off until the first refresh after waking.
 - **Watch Next has no progress bars.** SmartTube's rows don't include playback position. TizenTube still resumes where you left off.
 
 ## Build it yourself
 
-Pushes to `main` build a test APK, signed with a throwaway debug key if no signing secrets are set. Pushing a tag such as `v1.2.0`, or publishing a release on GitHub with a new `v1.2.0` tag, builds a release-signed APK and attaches it to the GitHub Release. Every build runs the unit tests first.
+Pushes to `main` build a test APK, signed with a throwaway debug key if no signing secrets are set. Pushing a tag such as `v1.2.0`, or publishing a release on GitHub with a new `v1.2.0` tag, builds a release-signed APK and attaches it to the GitHub Release.
 
 To sign your own builds, create a PKCS12 keystore and add two repository secrets:
 
