@@ -8,6 +8,7 @@ import java.util.Locale
 class UploadCache(context: Context) {
     private val store = context.applicationContext.getSharedPreferences("upload_times", Context.MODE_PRIVATE)
     private val bounds = HashMap<String, UploadTimes.Bound>()
+    private val seen = HashSet<String>()
     private var dirty = false
 
     init {
@@ -15,12 +16,13 @@ class UploadCache(context: Context) {
             val parts = (value as? String)?.split(':') ?: continue
             val ub = parts.getOrNull(0)?.toLongOrNull() ?: continue
             val unit = parts.getOrNull(1)?.let { runCatching { UploadTimes.Unit.valueOf(it) }.getOrNull() } ?: continue
-            bounds[videoId] = UploadTimes.Bound(ub, unit)
+            bounds[videoId] = UploadTimes.Bound(ub, unit, exact = parts.getOrNull(2) == "1")
         }
     }
 
     /** Records what [description] says now and returns the text with a fixed upload time, or as-is. */
     fun describe(videoId: String, description: String?, now: Long): String? {
+        seen += videoId
         val phrase = UploadTimes.find(description, now) ?: return description
         val best = UploadTimes.tighter(bounds[videoId], phrase.bound)
         if (best != bounds[videoId]) { bounds[videoId] = best; dirty = true }
@@ -33,10 +35,14 @@ class UploadCache(context: Context) {
 
     fun save() {
         if (!dirty) return
-        // Keep the newest videos; old ones fall out of every row long before this matters.
-        val keep = bounds.entries.sortedByDescending { it.value.upperBound }.take(MAX_ENTRIES)
+        // Keep every video still in a row (an old History video must not lose its bound and come back
+        // looser next sync, changing its label), then the newest of the rest.
+        val keep = bounds.entries
+            .sortedWith(compareByDescending<Map.Entry<String, UploadTimes.Bound>> { it.key in seen }
+                .thenByDescending { it.value.upperBound })
+            .take(MAX_ENTRIES)
         store.edit().clear().apply {
-            for ((videoId, b) in keep) putString(videoId, "${b.upperBound}:${b.unit.name}")
+            for ((videoId, b) in keep) putString(videoId, "${b.upperBound}:${b.unit.name}:${if (b.exact) 1 else 0}")
         }.apply()
         dirty = false
     }

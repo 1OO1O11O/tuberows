@@ -9,15 +9,17 @@ TizenTube Cobalt doesn't publish home-screen rows, so launchers like Projectivy 
 ## What it does
 
 1. **Reads SmartTube's home-screen rows** (Subscriptions, Recommended, History) from Android's TV provider, the same shared database launchers read from.
-2. **Publishes its own copies of those rows**, up to 40 videos each. Subscriptions and Recommended are on by default; History is off by default; turn it on in the app if you want it.
+2. **Publishes its own copies of those rows**, with every card SmartTube provides (up to 100). Your launcher decides how many to show; Projectivy shows 30 per row. Subscriptions and Recommended are on by default. History is off by default; turn it on in the app if you want it.
 3. **Opens every video in TizenTube Cobalt.** If TizenTube isn't installed, the video opens in SmartTube instead.
-4. **Fills Watch Next** with up to 3 of your most recent History videos (*Continue*) and up to 5 new uploads from your subscriptions (*New*). This works even with the History row off, and can be turned off.
-5. **Keeps the rows current:**
+4. **Shows when each video was uploaded as a fixed time.** YouTube's "1 hour ago" becomes "Uploaded ~7 pm, 27 Oct", so it stays correct however long a card sits in a row. English only; other languages are shown as SmartTube provides them.
+5. **Fills Watch Next** with up to 3 of your most recent History videos (*Continue*) and up to 5 new uploads from your subscriptions (*New*). This works even with the History row off, and can be turned off.
+6. **Keeps the rows current:**
    - Copies SmartTube's changes about 20 seconds after SmartTube updates its rows.
-   - Asks SmartTube to refresh 2 minutes after you open a video (so it shows in History), when you open the app, and once an hour while the screen is on.
+   - Asks SmartTube to refresh 2 minutes after you open a video (so it shows in History), and when you open the app.
+   - After the TV wakes, and every hour while the screen is on, asks SmartTube to refresh, unless SmartTube refreshed or was asked to in the last 30 minutes. Rows are usually fresh within a few minutes of turning the TV on.
    - Never asks SmartTube to refresh more than once every 10 minutes (the **Refresh SmartTube** button on the status screen is the only exception). SmartTube's own 15-minute refresh also keeps running.
    - Rows that haven't changed are not rewritten.
-6. **Shows a status screen** when you open *TizenTube Rows*: row toggles, whether it has read access, whether TizenTube is installed, last sync, last SmartTube refresh, and whether both apps are exempt from battery optimisation.
+7. **Shows a status screen** when you open *TizenTube Rows*: row toggles, read access, which TizenTube and SmartTube it found, last sync, when it last asked SmartTube to refresh, when SmartTube's data last changed (with a warning if it hasn't for a day), and whether each app is exempt from battery optimisation, with the exact command to fix it if not.
 
 ## What it doesn't do
 
@@ -33,11 +35,13 @@ TizenTube Cobalt doesn't publish home-screen rows, so launchers like Projectivy 
 - **[TizenTube Cobalt](https://github.com/reisxd/TizenTubeCobalt)** (`io.gh.reisxd.tizentube.cobalt`)
 - **[SmartTube](https://github.com/yuliskov/SmartTube)**, signed in to your YouTube account, with its Channels service on. That's the default; to check, go to SmartTube **Settings > Player > Developer options** and make sure **Disable Channels service** is *not* ticked. Sign SmartTube in to the same account as TizenTube, so history and recommendations match.
 - **A launcher that shows app channels**, such as [Projectivy Launcher](https://play.google.com/store/apps/details?id=com.spocky.projengmenu)
-- **A computer with ADB** for the one-time setup (Windows, macOS or Linux)
+- **A computer with ADB** for one command (see below). Windows, macOS or Linux.
 
 ## Install
 
-The setup needs ADB once: Android TV has no on-screen prompt for the permission that reads other apps' rows, and ADB is the reliable way to exempt apps from battery optimisation on a TV.
+You can install the APK any way you like (Downloader, a file manager, or ADB). The app asks for its one permission itself: open **TizenTube Rows** and press **Grant access**.
+
+**ADB is still needed once**, to exempt SmartTube from battery optimisation. Many TVs report that they're *not charging* even when plugged in, so Android throttles background apps there like a phone on battery. And because you'll never open SmartTube once this is set up, after about 8 days Android would limit its refreshes to roughly once a day, plugged in or not, and your rows would go stale. See [Why the battery exemption matters](#why-the-battery-exemption-matters).
 
 ### 1. Turn on Wireless debugging on the TV
 
@@ -79,20 +83,24 @@ adb connect 192.168.1.50:37451
 # run this with the pairing IP:port, enter the code, then run adb connect again
 adb pair 192.168.1.50:41923
 
-# Install (use the file name you downloaded), and grant the one permission the app needs
-adb install -r -g TizenTube-Recommendations-v1.1.0.apk
-adb shell pm grant tv.tuberows.app android.permission.READ_TV_LISTINGS
+# Install (use the file name you downloaded). -g grants the permission,
+# so you can skip the Grant access button
+adb install -r -g TizenTube-Recommendations-v1.2.0.apk
 
 # Find SmartTube's package name (it differs between builds)
 adb shell "pm list packages | grep -iE 'smarttube|teamsmart|liskovsoft'"
 
-# Exempt both apps from battery optimisation, so background refreshes keep running
+# Exempt SmartTube from battery optimisation (use the package name from the step above)
+adb shell dumpsys deviceidle whitelist +org.smarttube.stable
+
+# Optional: exempt TizenTube Rows too (opening cards already keeps it active)
 adb shell dumpsys deviceidle whitelist +tv.tuberows.app
-adb shell dumpsys deviceidle whitelist +org.smarttube.stable   # use the package name from the step above
 
 # Open the app once to start syncing
 adb shell am start -n tv.tuberows.app/.MainActivity
 ```
+
+Already installed the app without ADB? The status screen shows the exact exemption command for the SmartTube build on your TV.
 
 Turn Wireless debugging off when you're done.
 
@@ -105,29 +113,44 @@ Turn Wireless debugging off when you're done.
 
 ## Why the battery exemption matters
 
-Android's App Standby limits background work for apps you rarely open. Once this is set up you'll never open SmartTube, so without the exemption Android would cut its refreshes to as little as once a day, and your rows would go stale.
+Android's App Standby limits background work for apps you rarely open. Phones and tablets get a pass while charging, but many TVs report that they're **not charging** even on mains power, so the limits apply in full. On Android 13 and later, an app you haven't opened for about 8 days also lands in the *Restricted* bucket, where its background jobs run roughly once a day, even while charging. Refresh requests from this app don't count as you using SmartTube, so they can't prevent that.
 
-The exemption simply restores SmartTube's normal behaviour: it refreshes on its own 15-minute schedule, the same load as anyone who uses SmartTube daily. Depending on your TV's standby mode, that schedule may also run while the TV is in standby. This app's own hourly refresh request is skipped while the screen is off.
+The exemption simply restores SmartTube's normal behaviour: it refreshes on its own 15-minute schedule, the same load as anyone who uses SmartTube daily. Depending on your TV's standby mode, that may also run while the TV is in standby. This app only makes its wake-up and hourly refresh requests while the screen is on.
 
-The exemption survives reboots. The status screen shows whether both are in place; if a firmware update or reset clears them, run the `deviceidle whitelist` commands again.
+TizenTube Rows itself doesn't need the exemption: every card you open launches it, which keeps it active.
+
+The exemption survives reboots. The status screen shows whether it's in place; if a firmware update or reset clears it, run the `deviceidle whitelist` command again.
+
+To check an app's standby bucket: `adb shell am get-standby-bucket org.smarttube.stable` (`5` means exempt; `40` or higher means throttled).
+
+## Row lengths
+
+Each row shows what SmartTube publishes, which is shorter than what you can scroll inside SmartTube itself:
+
+- **Subscriptions** is usually the longest, often more than Projectivy's 30.
+- **Recommended** and **History** are often 10 to 20 videos. SmartTube's home-screen History comes from a shorter YouTube feed than its in-app History screen.
+
+TizenTube Rows can't make a row longer than SmartTube publishes it without fetching from YouTube itself, which would mean an internet permission and a sign-in.
 
 ## Troubleshooting
 
 | What you see | What to do |
 |---|---|
 | Status says **SmartTube rows not visible** | Open SmartTube once and check it's signed in and its Channels service is on (see Requirements). Then open TizenTube Rows again. |
-| **Read access: MISSING** | `adb shell pm grant tv.tuberows.app android.permission.READ_TV_LISTINGS` |
-| **Power: NOT exempt** | Run the two `dumpsys deviceidle whitelist` commands again, or run the install script again |
+| **Read access: MISSING** | Press **Grant access** on the status screen. If no prompt appears (Android stops asking after two refusals), run `adb shell pm grant tv.tuberows.app android.permission.READ_TV_LISTINGS` |
+| **NOT exempt** under Battery exemption | Run the command the status screen shows, or run the install script again |
+| **STALE** next to SmartTube data changed | SmartTube hasn't refreshed for a day. Check it's still signed in and exempt. |
 | Rows don't appear in Projectivy | Projectivy **Settings > Channels**: enable the TizenTube Rows channels |
+| An app tile in Projectivy does nothing | Projectivy may be showing a removed app. Restart the launcher or remove the tile. |
 | Videos open in SmartTube | TizenTube Cobalt isn't installed, or was installed under a different package name |
-| `adb connect` fails | Re-pair with `adb pair`, or use the script, which handles pairing. The connect port changes each time Wireless debugging is turned on. |
+| `adb connect` fails | Re-pair with `adb pair`, or use the script, which handles pairing. The connect port changes each time Wireless debugging is turned on. A timeout usually means the computer isn't on the same network as the TV. |
 | Need logs | `adb logcat -d -s TubeRows` |
 
 ## Uninstall
 
 ```sh
-adb shell dumpsys deviceidle whitelist -tv.tuberows.app
 adb shell dumpsys deviceidle whitelist -org.smarttube.stable   # your SmartTube package
+adb shell dumpsys deviceidle whitelist -tv.tuberows.app
 adb uninstall tv.tuberows.app
 ```
 
@@ -135,13 +158,14 @@ Android normally deletes an uninstalled app's rows and Watch Next entries by its
 
 ## Limitations
 
-- **It depends on how SmartTube publishes its rows.** If SmartTube changes that, rows may stop updating until this app is updated.
+- **It depends on how SmartTube publishes its rows.** If SmartTube changes that, rows may stop updating until this app is updated. A [weekly check](.github/workflows/upstream-check.yml) watches SmartTube's source for exactly this.
 - **The content is SmartTube's.** Recommendations come from the account SmartTube is signed in to.
+- **Upload times are approximate.** YouTube only says "1 hour ago" or "2 days ago", so a new card's time can be up to an hour out, and a date shown without a time up to a day out. It sharpens on its own: when a refresh catches YouTube's wording tick over ("1 hour" to "2 hours"), the time is pinned to within about 15 minutes. It never goes stale either way.
 - **Watch Next has no progress bars.** SmartTube's rows don't include playback position. TizenTube still resumes where you left off.
 
 ## Build it yourself
 
-Pushes to `main` build a test APK, signed with a throwaway debug key if no signing secrets are set. Pushing a tag such as `v1.2.0`, or publishing a release on GitHub with a new `v1.2.0` tag, builds a release-signed APK and attaches it to the GitHub Release.
+Pushes to `main` build a test APK, signed with a throwaway debug key if no signing secrets are set. Pushing a tag such as `v1.2.0`, or publishing a release on GitHub with a new `v1.2.0` tag, builds a release-signed APK and attaches it to the GitHub Release. Every build runs the unit tests first.
 
 To sign your own builds, create a PKCS12 keystore and add two repository secrets:
 
@@ -157,6 +181,8 @@ base64 -w0 release.p12   # paste the output into the KEYSTORE_B64 secret
 | `KEYSTORE_PASSWORD` | The keystore password (also used as the key password) |
 
 Keep the keystore safe. Updates must be signed with the same key, or users have to uninstall first. Never commit it; `.gitignore` already excludes `*.p12`, `*.jks` and `*.keystore`.
+
+**Upstream check:** [`upstream-check.yml`](.github/workflows/upstream-check.yml) runs every Monday. It inspects SmartTube's latest release for everything this app relies on (the refresh receiver, row IDs and keys, and the video link format), and opens an issue if any of it changes. You can also run it by hand from the Actions tab. GitHub pauses scheduled workflows in repositories with no activity for 60 days; re-enable it from the Actions tab if that happens.
 
 ## Credits
 

@@ -48,6 +48,7 @@ object Mirror {
     private const val ASPECT_RATIO_16_9 = 0
     private const val WATCH_NEXT_CONTINUE = 0
     private const val WATCH_NEXT_NEW = 2
+    private const val MAX_WRITE_RETRIES = 3
     private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{11}$")
     private val VIDEO_ID_IN_TEXT = Regex("(?:[?&]v=|youtu\\.be/|/vi(?:_webp)?/|/shorts/)([A-Za-z0-9_-]{11})")
 
@@ -178,6 +179,15 @@ object Mirror {
                 "cards seen=$programsSeen; unparsable=$skipped"
         )
 
+        // Fingerprint SmartTube's raw rows (descriptions included: their view counts and "x ago" text change
+        // on every SmartTube refresh), so we know when SmartTube last refreshed, whoever triggered it.
+        if (best.isNotEmpty()) {
+            val raw = best.entries.joinToString("\n") { (row, pair) ->
+                pair.second.joinToString("\n") { "${row.key}|${it.videoId}|${it.title}|${it.description}" }
+            }
+            if (prefs.recordSourceSignature(sha256(raw))) Log.i(Config.TAG, "SmartTube data changed")
+        }
+
         // Fixed upload times: observe every visible card once, so bounds tighten even for rows that are off.
         val uploads = UploadCache(context)
         val shown = HashMap<String, String?>()
@@ -208,21 +218,25 @@ object Mirror {
             }
 
             val signature = signatureOf(list, uploads, now)
-            if (ownId != null && signature == prefs.signature(row) && ownCounts[ownId] == list.size) {
+            val sameContent = signature == prefs.signature(row)
+            val failures = if (sameContent) prefs.writeFailures(row) else 0
+            if (ownId != null && sameContent && (ownCounts[ownId] == list.size || failures >= MAX_WRITE_RETRIES)) {
                 lines += "${row.label}: ${list.size} cards (unchanged)"
                 continue
             }
 
             val channelId = ownId ?: createChannel(context, row)
             val written = writePrograms(context, channelId, list, source.pkg, shown)
+            prefs.setSignature(row, signature)
             if (written == list.size) {
-                prefs.setSignature(row, signature)
-                prefs.recordContentChange()
+                prefs.setWriteFailures(row, 0)
                 lines += "${row.label}: ${list.size} cards"
             } else {
-                // Leave the signature unset so the next sync (seconds away, triggered by this write) retries.
-                prefs.setSignature(row, null)
-                lines += "${row.label}: wrote $written of ${list.size}, will retry"
+                // Our write fires the content trigger, so the next sync retries within seconds; stop after a few
+                // tries so a provider that keeps refusing isn't hammered. New content gets a fresh set of tries.
+                prefs.setWriteFailures(row, failures + 1)
+                lines += "${row.label}: wrote $written of ${list.size}" +
+                    if (failures + 1 >= MAX_WRITE_RETRIES) ", giving up until the row changes" else ", will retry"
             }
         }
 

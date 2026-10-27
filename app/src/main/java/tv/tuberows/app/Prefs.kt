@@ -42,11 +42,27 @@ class Prefs(context: Context) {
             .apply()
     }
 
-    /** When a row last actually changed (new videos), as opposed to when we last checked. */
-    val lastContentChange: Long get() = store.getLong("last_content_change", 0L)
+    /**
+     * When SmartTube's data last changed. SmartTube rewrites view counts and "x ago" text on every
+     * refresh, so this is effectively when SmartTube last refreshed, whoever triggered it.
+     */
+    val lastSourceChange: Long get() = store.getLong("last_source_change", 0L)
 
-    fun recordContentChange() {
-        store.edit().putLong("last_content_change", System.currentTimeMillis()).apply()
+    /** Records the fingerprint of SmartTube's rows; returns true if it differs from last time. */
+    fun recordSourceSignature(signature: String): Boolean {
+        if (store.getString("source_sig", null) == signature) return false
+        store.edit()
+            .putString("source_sig", signature)
+            .putLong("last_source_change", System.currentTimeMillis())
+            .apply()
+        return true
+    }
+
+    /** Consecutive incomplete writes for a row, so a provider that keeps failing isn't retried forever. */
+    fun writeFailures(row: Config.Row): Int = store.getInt("fail_${row.key}", 0)
+
+    fun setWriteFailures(row: Config.Row, count: Int) {
+        store.edit().putInt("fail_${row.key}", count).apply()
     }
 
     val status: String get() = store.getString("status", null) ?: "Not synced yet."

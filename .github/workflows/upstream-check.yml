@@ -1,0 +1,109 @@
+name: upstream-check
+
+# Weekly check that SmartTube still publishes its rows the way TubeRows reads them.
+# It inspects SmartTube's source at its latest release; if anything TubeRows relies on has moved,
+# the run fails and opens an issue here. It can't prove the app works end to end, but it catches
+# the likely breaking changes before users notice missing rows.
+on:
+  schedule:
+    - cron: '17 3 * * 1'   # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smarttube:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check SmartTube source
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # No -e (Actions turns it on) or pipefail: every check runs, and grep -q closing the pipe early isn't a failure.
+          set +e -u
+          UP=yuliskov/SmartTube
+          REF="$(gh api "repos/$UP/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          if [ -z "$REF" ]; then REF="$(gh api "repos/$UP" --jq .default_branch)"; fi
+          # GitHub unreachable: fail the run without opening an issue for a change that didn't happen.
+          if [ -z "$REF" ]; then echo "::error::Couldn't read $UP from the GitHub API"; exit 1; fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Checking $UP at $REF"
+
+          fetch() { gh api -H 'Accept: application/vnd.github.raw' "repos/$1/contents/$2?ref=$3" 2>/dev/null; }
+          J=leanbackassistant/src/main/java/com/liskovsoft/leanbackassistant
+          M=leanbackassistant/src/main/AndroidManifest.xml
+          : > failures.md
+          check() { # description, path, regex
+            if fetch "$UP" "$2" "$REF" | grep -qE -- "$3"; then echo "OK   $1"
+            else echo "FAIL $1"; echo "- $1 (\`$2\`, expected \`$3\`)" >> failures.md; fi
+          }
+
+          # Refresh: TubeRows sends an explicit broadcast to this exported receiver
+          check "Refresh receiver schedules the channel worker" "$J/channels/UpdateChannelsReceiver.java" 'UpdateChannelsWorker\.schedule\('
+          if fetch "$UP" "$M" "$REF" | grep -A4 'channels.UpdateChannelsReceiver' | grep -q 'android:exported="true"'; then
+            echo "OK   Refresh receiver is exported"
+          else
+            echo "FAIL Refresh receiver is exported"; echo "- Refresh receiver no longer exported (\`$M\`)" >> failures.md
+          fi
+          check "Channel worker refreshes immediately" "$J/channels/UpdateChannelsWorker.java" 'CANCEL_AND_REENQUEUE'
+
+          # Rows: matched by provider ID (1/2/3), with the channel keys as fallback
+          check "Subscriptions provider ID is 1" "$J/media/ClipService.java" 'SUBSCRIPTIONS_ID = 1;'
+          check "History provider ID is 2" "$J/media/ClipService.java" 'HISTORY_ID = 2;'
+          check "Recommended provider ID is 3" "$J/media/ClipService.java" 'RECOMMENDED_ID = 3;'
+          check "Subscriptions channel key" "$J/media/ClipService.java" '"subs_channel_id"'
+          check "Recommended channel key" "$J/media/ClipService.java" '"recommended_channel_id"'
+          check "History channel key" "$J/media/ClipService.java" '"history_channel_id"'
+          check "Channels carry the provider ID" "$J/channels/ChannelsProvider.java" 'setInternalProviderId\(playlist\.getPlaylistId\(\)\)'
+
+          # Cards: TubeRows reads the video ID from each card's intent
+          check "Cards open the video URL" "$J/channels/ChannelsProvider.java" 'createAppIntent\(clip\.getVideoUrl\(\)\)'
+          check "Video URL built from the video ID" "$J/media/Playlist.java" 'videoIdToFullUrl\(v\.getVideoId\(\)\)'
+          if fetch "$UP" "$J/channels/ChannelsProvider.java" "$REF" | grep -q 'setSearchable(false)'; then
+            echo "FAIL Cards are hidden from other apps"; echo "- SmartTube now marks cards not searchable, so TubeRows can't read them" >> failures.md
+          else
+            echo "OK   Cards stay readable by other apps"
+          fi
+          # The URL format lives in the MediaServiceCore submodule, pinned to a commit by this release
+          MSC="$(gh api "repos/$UP/contents/MediaServiceCore?ref=$REF" --jq .sha 2>/dev/null || true)"
+          SH=youtubeapi/src/main/java/com/liskovsoft/googlecommon/common/helpers/ServiceHelper.java
+          if [ -n "$MSC" ] && fetch yuliskov/MediaServiceCore "$SH" "$MSC" | grep -qE 'youtube\.com/watch\?v=%s'; then
+            echo "OK   Video URL format is watch?v="
+          else
+            echo "FAIL Video URL format is watch?v="
+            echo "- Video URL format changed or moved (MediaServiceCore \`${MSC:-submodule not found}\`, \`$SH\`)" >> failures.md
+          fi
+
+          if [ -s failures.md ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            { echo "### SmartTube $REF: changes detected"; cat failures.md; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### SmartTube $REF: all checks passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Open an issue
+        if: steps.check.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ steps.check.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'in:title "SmartTube change detected"' --json number --jq '.[].number')" ]; then
+            echo "An open issue already tracks this."
+          else
+            {
+              echo "The weekly check found that SmartTube $REF changed something TubeRows relies on:"
+              echo
+              cat failures.md
+              echo
+              echo "Rows may stop updating for users on this SmartTube version. Check the linked files, update TubeRows, and close this issue."
+              echo
+              echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            } > body.md
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "SmartTube change detected ($REF)" --body-file body.md
+          fi
+          exit 1

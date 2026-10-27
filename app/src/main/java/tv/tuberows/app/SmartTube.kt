@@ -69,7 +69,10 @@ object SmartTube {
     fun catchUp(context: Context, reason: String) {
         val power = context.getSystemService(PowerManager::class.java)
         if (power?.isInteractive == false) return
-        if (System.currentTimeMillis() - Prefs(context).lastNudge < Config.CATCH_UP_AFTER_MS) return
+        // Fresh if we asked recently, or if SmartTube refreshed by itself (its data changed) recently.
+        val prefs = Prefs(context)
+        val lastFresh = maxOf(prefs.lastNudge, prefs.lastSourceChange)
+        if (System.currentTimeMillis() - lastFresh < Config.CATCH_UP_AFTER_MS) return
         request(context, reason)
     }
 

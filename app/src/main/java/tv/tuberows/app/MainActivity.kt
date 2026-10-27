@@ -122,7 +122,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         grantButton.visibility = if (granted) View.GONE else View.VISIBLE
         val now = System.currentTimeMillis()
         val nudge = if (prefs.lastNudge > 0) "${ago(prefs.lastNudge)} (${prefs.lastNudgeReason})" else "never"
-        val changed = prefs.lastContentChange
+        val changed = prefs.lastSourceChange
         val stale = changed > 0 && now - changed > Config.STALE_WARNING_MS
         val power = getSystemService(PowerManager::class.java)
         val smartTube = prefs.sourcePackages.ifEmpty { SmartTube.installedPackages(this) }
@@ -131,12 +131,13 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
 
         statusView.text = buildString {
             appendLine("Read access : ${if (granted) "granted" else "MISSING: press Grant access above"}")
+            if (!granted) appendLine("  No prompt? adb shell pm grant $packageName ${Config.READ_TV_LISTINGS}")
             appendLine("TizenTube   : ${if (tizenTube) "installed" else "NOT FOUND (videos open in SmartTube)"}")
             appendLine("SmartTube   : ${if (smartTube.isEmpty()) "NOT FOUND" else smartTube.joinToString()}")
             appendLine("Last sync   : ${ago(prefs.lastRun)}")
-            appendLine("Refreshed   : $nudge")
-            appendLine("New content : ${ago(changed)}" +
-                if (stale) "  STALE: SmartTube may not be refreshing (signed in? exempt below?)" else "")
+            appendLine("Last asked  : $nudge")
+            appendLine("SmartTube data changed: ${ago(changed)}" +
+                if (stale) "  STALE: SmartTube isn't refreshing (signed in? exempt below?)" else "")
             appendLine()
             appendLine("Battery exemption (keeps background refreshes running):")
             for (pkg in smartTube) {

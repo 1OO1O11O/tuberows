@@ -3,6 +3,7 @@ package tv.tuberows.app
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -63,5 +64,29 @@ class UploadTimesTest {
         assertSame(fresh, UploadTimes.tighter(stale, fresh))
         assertSame(fresh, UploadTimes.tighter(fresh, stale))
         assertEquals("~7 pm, 27 oct", UploadTimes.label(fresh, nextMorning, zone, locale).lowercase(Locale.ROOT))
+    }
+
+    /** Catching "1 hour" tick over to "2 hours" pins the upload close to the bound; the midpoint would say 6 pm. */
+    @Test fun tickOverIsExact() {
+        val first = UploadTimes.find("1 hour ago", at)!!.bound                    // upload <= 8 pm
+        val next = UploadTimes.find("2 hours ago", at + 15 * 60_000L)!!.bound     // upload <= 7:15 pm
+        val best = UploadTimes.tighter(first, next)
+        assertTrue(best.exact)
+        assertEquals("~7 pm, 27 oct", UploadTimes.label(best, at, zone, locale).lowercase(Locale.ROOT))
+    }
+
+    @Test fun nonBreakingSpaces() = assertEquals("~7 pm, 27 oct", label("1 hour ago"))
+
+    /** "2 days ago" read just past the 48-hour mark is barely tighter than an hour-level bound: keep the hour. */
+    @Test fun coarserPhraseKeepsFinerPrecision() {
+        val hour = UploadTimes.find("23 hours ago", at)!!.bound                  // upload <= 10 pm, 26 Oct
+        val later = ZonedDateTime.of(2026, 10, 28, 21, 55, 0, 0, zone).toInstant().toEpochMilli()
+        val day = UploadTimes.find("2 days ago", later)!!.bound                  // upload <= 9:55 pm, 26 Oct
+        val best = UploadTimes.tighter(hour, day)
+        assertEquals(day.upperBound, best.upperBound)
+        assertEquals("~9 pm, 26 oct", UploadTimes.label(best, later, zone, locale).lowercase(Locale.ROOT))
+        // Far tighter means the hour reading was stale, so the coarser reading wins outright.
+        val staleHour = hour.copy(upperBound = hour.upperBound + 5 * 3_600_000L)
+        assertEquals(UploadTimes.Unit.DAY, UploadTimes.tighter(staleHour, day).unit)
     }
 }

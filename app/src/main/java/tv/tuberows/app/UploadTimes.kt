@@ -21,16 +21,25 @@ object UploadTimes {
         WEEK(7 * 86_400_000L), MONTH(30 * 86_400_000L), YEAR(365 * 86_400_000L),
     }
 
-    /** What one phrase tells us: the upload happened no later than [upperBound]. */
-    data class Bound(val upperBound: Long, val unit: Unit) {
-        /** Middle of YouTube's rounding bucket ("1 hour ago" means 1:00 to 1:59 ago). */
-        val estimate: Long get() = upperBound - unit.millis / 2
+    /**
+     * What we know: the upload happened no later than [upperBound]. [exact] means a fresh read caught
+     * YouTube's wording tick over ("1 hour" to "2 hours"), so the bound is within one refresh of the truth.
+     */
+    data class Bound(val upperBound: Long, val unit: Unit, val exact: Boolean = false) {
+        /** Exact: just before the bound. Otherwise the middle of YouTube's bucket ("1 hour ago" = 1:00 to 1:59). */
+        val estimate: Long
+            get() = upperBound - if (exact) minOf(unit.millis / 2, EXACT_SLACK_MS) else unit.millis / 2
     }
 
     data class Phrase(val range: IntRange, val prefix: String?, val bound: Bound)
 
+    /** Half of SmartTube's 15-minute refresh: how far an "exact" bound can sit after the real upload. */
+    private const val EXACT_SLACK_MS = 7 * 60_000L + 30_000L
+
+    // Spaces may be non-breaking in some YouTube text.
+    private const val SP = "[\\s\\u00A0\\u202F]+"
     private val PHRASE = Regex(
-        "\\b(?:(streamed|premiered)\\s+)?(\\d{1,4})\\s+(second|minute|hour|day|week|month|year)s?\\s+ago\\b",
+        "\\b(?:(streamed|premiered)$SP)?(\\d{1,4})$SP(second|minute|hour|day|week|month|year)s?${SP}ago\\b",
         RegexOption.IGNORE_CASE,
     )
 
@@ -43,9 +52,20 @@ object UploadTimes {
         return Phrase(m.range, prefix, Bound(observedAt - n * unit.millis, unit))
     }
 
-    /** Keeps whichever bound is tighter (earlier). Both are valid; the earlier one is closer to the truth. */
-    fun tighter(current: Bound?, candidate: Bound): Bound =
-        if (current == null || candidate.upperBound < current.upperBound) candidate else current
+    /**
+     * Keeps whichever bound is tighter (earlier). Both are valid; the earlier one is closer to the truth.
+     *
+     * When the new bound is earlier by less than one unit of the current one, YouTube's wording has just
+     * ticked over ("1 hour" to "2 hours", or "23 hours" to "2 days"), so the new bound is exact and the
+     * finer unit is kept. Earlier by more than that means the current reading was stale: start again.
+     */
+    fun tighter(current: Bound?, candidate: Bound): Bound = when {
+        current == null -> candidate
+        candidate.upperBound >= current.upperBound -> current
+        candidate.unit >= current.unit && candidate.upperBound > current.upperBound - current.unit.millis ->
+            Bound(candidate.upperBound, current.unit, exact = true)
+        else -> candidate
+    }
 
     fun label(bound: Bound, now: Long, zone: ZoneId, locale: Locale): String {
         val t = ZonedDateTime.ofInstant(Instant.ofEpochMilli(bound.estimate), zone)
