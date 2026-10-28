@@ -1,0 +1,93 @@
+name: apk-test-build
+
+# Builds "TizenTube Home Test": the current TizenTube Cobalt release plus the home screen rows
+# classes, installable beside the real app. Signed with a throwaway key made for this run only.
+on:
+  push:
+    branches: ['ci/native-check']
+    paths: ['.github/workflows/apk-test-build.yml', 'tools/patch_apk.py', 'native/src/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # only to push the build log to the ci/out branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/build.txt"; exec > >(tee "$LOG") 2>&1
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          JAR="$ANDROID_HOME/platforms/android-34/android.jar"
+          [ -f "$JAR" ] || (yes | "$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)" "platforms;android-34" > /dev/null) || true
+          W="$RUNNER_TEMP/w"; mkdir -p "$W/classes" "$W/dex" "$W/out"
+          gh release view -R reisxd/TizenTubeCobalt --json tagName --jq .tagName
+          gh release download -R reisxd/TizenTubeCobalt -p '*.apk' -D "$W/apks"
+          gh release download -R iBotPeaches/Apktool -p 'apktool_*.jar' -O "$W/apktool.jar"
+
+          javac --release 8 -cp "$JAR" -d "$W/classes" $(find native/src -name '*.java')
+          "$BT/d8" --release --min-api 24 --lib "$JAR" --output "$W/dex" $(find "$W/classes" -name '*.class')
+          ls -la "$W/dex"
+
+          PW="$(openssl rand -hex 16)"
+          keytool -genkeypair -storetype PKCS12 -keystore "$W/test.p12" -storepass "$PW" -alias test \
+            -keyalg RSA -keysize 3072 -validity 365 -dname "CN=TizenTube Home Test" > /dev/null 2>&1
+
+          for apk in "$W"/apks/*.apk; do
+            n="$(basename "$apk" .apk)"; d="$W/d_$n"
+            echo "===== $n"
+            java -jar "$W/apktool.jar" d -f -o "$d" "$apk" | tail -3
+            python3 tools/patch_apk.py "$d"
+            java -jar "$W/apktool.jar" b "$d" -o "$W/$n-unsigned.apk" | tail -5
+            next=$(( $(unzip -l "$W/$n-unsigned.apk" | grep -cE ' classes[0-9]*\.dex$') + 1 ))
+            cp "$W/dex/classes.dex" "$W/classes$next.dex"
+            (cd "$W" && zip -q -j "$n-unsigned.apk" "classes$next.dex")
+            "$BT/zipalign" -P 16 -f 4 "$W/$n-unsigned.apk" "$W/$n-aligned.apk"
+            out="$W/out/TizenTube-Home-Test-${n#cobalt-}.apk"
+            "$BT/apksigner" sign --ks "$W/test.p12" --ks-pass "pass:$PW" --out "$out" "$W/$n-aligned.apk"
+            "$BT/apksigner" verify "$out" && echo "signed $(basename "$out") $(stat -c %s "$out") bytes"
+            "$BT/aapt2" dump badging "$out" 2>/dev/null | grep -E "^package|uses-permission: name='com.android.providers.tv|application-label:" || true
+            rm -rf "$d" "$W/$n-unsigned.apk" "$W/$n-aligned.apk"
+          done
+          rm -f "$W/test.p12"
+          echo "out=$W/out" >> "$GITHUB_OUTPUT"
+
+      - name: Upload arm
+        uses: actions/upload-artifact@v4
+        with:
+          name: TizenTube-Home-Test-arm
+          path: ${{ steps.build.outputs.out }}/TizenTube-Home-Test-arm.apk
+          retention-days: 3
+          compression-level: 0
+      - name: Upload arm64
+        uses: actions/upload-artifact@v4
+        with:
+          name: TizenTube-Home-Test-arm64
+          path: ${{ steps.build.outputs.out }}/TizenTube-Home-Test-arm64.apk
+          retention-days: 3
+          compression-level: 0
+
+      - name: Publish build log to the ci/out branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP" && rm -rf outlog && mkdir outlog && cd outlog
+          git init -q -b ci/out
+          git fetch -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" ci/out && git checkout -q FETCH_HEAD || true
+          git checkout -q -B ci/out
+          tail -c 60000 ../build.txt > build.txt 2>/dev/null || echo "no log" > build.txt
+          git add build.txt
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "build $GITHUB_RUN_ID" || true
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" ci/out
