@@ -32,6 +32,8 @@ def manifest(s):
     ns = re.search(r'xmlns:(\w+)="http://schemas.android.com/apk/res/android"', s).group(1)
     # Authorities and package-scoped permission names follow the new id; class names don't use it.
     s = s.replace('"' + OLD_ID + '.', '"' + NEW_ID + '.')
+    # The app id itself (apktool 3 ignores renameManifestPackage).
+    s = s.replace('package="' + OLD_ID + '"', 'package="' + NEW_ID + '"', 1)
     s = re.sub(r'(<application[^>]*?\b%s:label=")[^"]*"' % ns, r'\1TizenTube Home Test"', s, count=1)
     perm = '    <uses-permission %s:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />\n' % ns
     s = s.replace('<application', perm + '    <application', 1)
@@ -45,11 +47,6 @@ def manifest(s):
     return s
 edit(os.path.join(d, 'AndroidManifest.xml'), manifest)
 
-def yml(s):
-    if 'renameManifestPackage' in s:
-        return re.sub(r'renameManifestPackage:.*', 'renameManifestPackage: ' + NEW_ID, s)
-    return s.rstrip('\n') + '\nrenameManifestPackage: ' + NEW_ID + '\n'
-edit(os.path.join(d, 'apktool.yml'), yml)
 
 # ---- smali
 bridge = glob.glob(os.path.join(d, 'smali*', 'dev', 'cobalt', 'coat', 'BaseStarboardBridge.smali'))
