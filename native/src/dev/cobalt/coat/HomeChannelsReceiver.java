@@ -22,6 +22,9 @@ import android.media.tv.TvContract;
 /**
  * Hears the home screen tell us the user removed one of our cards, so {@link HomeChannels} never
  * puts it back (Watch Next cards return only after the video is watched again).
+ *
+ * <p>Exported because the system sends these broadcasts. Another app could only fake a removal of
+ * one of our own cards, which hides it; nothing else is reachable through here.
  */
 public final class HomeChannelsReceiver extends BroadcastReceiver {
   @Override
@@ -29,12 +32,12 @@ public final class HomeChannelsReceiver extends BroadcastReceiver {
     if (intent == null) return;
     long id = intent.getLongExtra(TvContract.EXTRA_PREVIEW_PROGRAM_ID, -1);
     if (TvContract.ACTION_PREVIEW_PROGRAM_BROWSABLE_DISABLED.equals(intent.getAction()) && id >= 0) {
-      HomeChannels.onRemoved(context, id, false);
+      HomeChannels.onRemoved(context, id, false, goAsync());
       return;
     }
     id = intent.getLongExtra(TvContract.EXTRA_WATCH_NEXT_PROGRAM_ID, -1);
     if (TvContract.ACTION_WATCH_NEXT_PROGRAM_BROWSABLE_DISABLED.equals(intent.getAction()) && id >= 0) {
-      HomeChannels.onRemoved(context, id, true);
+      HomeChannels.onRemoved(context, id, true, goAsync());
     }
   }
 }

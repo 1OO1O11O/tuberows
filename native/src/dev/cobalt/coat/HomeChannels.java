@@ -14,6 +14,7 @@
 
 package dev.cobalt.coat;
 
+import android.content.BroadcastReceiver;
 import android.content.ContentProviderOperation;
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -61,6 +62,8 @@ public final class HomeChannels {
   private static final String PREF_ACCOUNT = "account";
   private static final String PREF_CHANNEL = "channel.";
   private static final String PREF_REMOVED = "removed.";
+  private static final String WATCH_NEXT_ROW = "#watch_next";
+  private static final String PREF_BROWSABLE_ASKED = "browsable_asked";
 
   private static final int MAX_JSON = 512 * 1024;
   private static final int MAX_ROWS = 12;
@@ -104,6 +107,7 @@ public final class HomeChannels {
     TvContract.WatchNextPrograms.COLUMN_DURATION_MILLIS,
     TvContract.WatchNextPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS,
     TvContract.WatchNextPrograms.COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS,
+    TvContract.WatchNextPrograms.COLUMN_WATCH_NEXT_TYPE,
   };
 
   // One thread: updates never overlap, and the caller (the renderer's JNI thread) never waits.
@@ -113,9 +117,16 @@ public final class HomeChannels {
 
   /** True when this device has a TvProvider to publish to (Android TV and Google TV, 8.0+). */
   public static boolean isSupported(Context context) {
-    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-        && context.getPackageManager().resolveContentProvider(TvContract.AUTHORITY, 0) != null;
+    Boolean known = sSupported;
+    if (known == null) {
+      known = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+          && context.getPackageManager().resolveContentProvider(TvContract.AUTHORITY, 0) != null;
+      sSupported = known;
+    }
+    return known;
   }
+
+  private static volatile Boolean sSupported;
 
   /** Queues one payload from the web app. Never throws. */
   public static void publish(Context context, String json) {
@@ -140,7 +151,7 @@ public final class HomeChannels {
     if (payload.optInt("v") != 1) return;
     SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     if (payload.optBoolean("clear")) {
-      clearAll(context, prefs);
+      clearAll(context, prefs, true);
       return;
     }
 
@@ -148,7 +159,7 @@ public final class HomeChannels {
     String account = payload.optString("account", "");
     if (!account.isEmpty() && ACCOUNT.matcher(account).matches()) {
       String previous = prefs.getString(PREF_ACCOUNT, "");
-      if (!previous.isEmpty() && !previous.equals(account)) clearAll(context, prefs);
+      if (!previous.isEmpty() && !previous.equals(account)) clearAll(context, prefs, false);
       prefs.edit().putString(PREF_ACCOUNT, account).apply();
     }
 
@@ -228,7 +239,10 @@ public final class HomeChannels {
   private static String clean(String s) {
     if (s == null) return "";
     s = s.replaceAll("\\s+", " ").trim();
-    return s.length() > MAX_TEXT ? s.substring(0, MAX_TEXT - 1) + "…" : s;
+    if (s.length() <= MAX_TEXT) return s;
+    int end = MAX_TEXT - 1;
+    if (Character.isHighSurrogate(s.charAt(end - 1))) end--;
+    return s.substring(0, end) + "…";
   }
 
   private static String intentUri(Context context, Uri link) {
@@ -313,6 +327,15 @@ public final class HomeChannels {
     id = ContentUris.parseId(uri);
     prefs.edit().putLong(PREF_CHANNEL + key, id).remove(PREF_REMOVED + key).apply();
     storeLogo(context, id);
+    if (!prefs.getBoolean(PREF_BROWSABLE_ASKED, false)) {
+      // The stock launcher shows an app's first requested channel; others are added by the user.
+      try {
+        TvContract.requestChannelBrowsable(context, id);
+      } catch (Exception e) {
+        Log.w(TAG, "Channel not made browsable", e);
+      }
+      prefs.edit().putBoolean(PREF_BROWSABLE_ASKED, true).apply();
+    }
     return id;
   }
 
@@ -343,6 +366,7 @@ public final class HomeChannels {
     // What is on screen now.
     Map<String, ContentValues> existing = new HashMap<>();
     Map<String, Long> existingIds = new HashMap<>();
+    Set<String> hidden = new HashSet<>();
     List<Long> strays = new ArrayList<>();
     try (Cursor c =
         resolver.query(
@@ -354,9 +378,12 @@ public final class HomeChannels {
           strays.add(id);
           continue;
         }
-        if (c.getInt(2) == 0) removed.add(key, 0); // Removed by the user, even if we missed the broadcast.
+        if (c.getInt(2) == 0) { // Removed by the user, even if we missed the broadcast.
+          removed.add(key, 0);
+          hidden.add(key);
+        }
         existingIds.put(key, id);
-        existing.put(key, valuesOf(c, PROGRAM_COLUMNS, 3));
+        existing.put(key, valuesOf(c, PROGRAM_COLUMNS, 3, PROGRAM_COLUMNS.length));
       }
     }
 
@@ -381,6 +408,11 @@ public final class HomeChannels {
       Card card = cards.get(i);
       ContentValues v = programValues(context, card, cards.size() - i);
       Long id = existingIds.get(card.key);
+      if (id != null && hidden.contains(card.key)) {
+        // Hidden by an old removal that has since expired: a new card, since browsable can't be reset.
+        ops.add(ContentProviderOperation.newDelete(TvContract.buildPreviewProgramUri(id)).build());
+        id = null;
+      }
       if (id == null) {
         v.put(TvContract.PreviewPrograms.COLUMN_CHANNEL_ID, channelId);
         v.put(TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID, card.key);
@@ -415,24 +447,30 @@ public final class HomeChannels {
   private static void syncWatchNext(Context context, SharedPreferences prefs, JSONArray items)
       throws Exception {
     ContentResolver resolver = context.getContentResolver();
-    Removed removed = new Removed(prefs, PREF_REMOVED + "watch_next");
+    Removed removed = new Removed(prefs, PREF_REMOVED + WATCH_NEXT_ROW);
 
     Map<String, ContentValues> existing = new HashMap<>();
     Map<String, Long> existingIds = new HashMap<>();
+    Set<String> hidden = new HashSet<>();
     List<Long> strays = new ArrayList<>();
     // Non-system apps only ever see their own Watch Next rows.
     try (Cursor c =
         resolver.query(TvContract.WatchNextPrograms.CONTENT_URI, WATCH_NEXT_COLUMNS, null, null, null)) {
       while (c != null && c.moveToNext()) {
+        // Only our own Continue Watching cards; ones the user added ("Watch Next", watchlist) stay theirs.
+        if (c.isNull(10) || c.getInt(10) != TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE) continue;
         long id = c.getLong(0);
         String key = c.getString(1);
         if (key == null || existingIds.containsKey(key)) {
           strays.add(id);
           continue;
         }
-        if (c.getInt(2) == 0) removed.add(key, c.getLong(9));
+        if (c.getInt(2) == 0) {
+          removed.add(key, c.getLong(9));
+          hidden.add(key);
+        }
         existingIds.put(key, id);
-        existing.put(key, valuesOf(c, WATCH_NEXT_COLUMNS, 3));
+        existing.put(key, valuesOf(c, WATCH_NEXT_COLUMNS, 3, 10));
       }
     }
 
@@ -469,6 +507,11 @@ public final class HomeChannels {
       v.put(TvContract.WatchNextPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS, card.positionMs);
       v.put(TvContract.WatchNextPrograms.COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS, card.engagedAt);
       Long id = existingIds.get(card.key);
+      if (id != null && hidden.contains(card.key)) {
+        // Removed earlier and watched again since: a new card, since browsable can't be reset.
+        ops.add(ContentProviderOperation.newDelete(TvContract.buildWatchNextProgramUri(id)).build());
+        id = null;
+      }
       if (id == null) {
         v.put(TvContract.WatchNextPrograms.COLUMN_INTERNAL_PROVIDER_ID, card.key);
         v.put(TvContract.WatchNextPrograms.COLUMN_CONTENT_ID, card.key);
@@ -535,7 +578,8 @@ public final class HomeChannels {
   }
 
   /** Called by {@link HomeChannelsReceiver} when the user removes a card. */
-  static void onRemoved(Context context, long programId, boolean watchNext) {
+  static void onRemoved(
+      Context context, long programId, boolean watchNext, BroadcastReceiver.PendingResult done) {
     final Context app = context.getApplicationContext();
     EXECUTOR.execute(
         () -> {
@@ -556,7 +600,7 @@ public final class HomeChannels {
             SharedPreferences prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             try (Cursor c = resolver.query(uri, columns, null, null, null)) {
               if (c == null || !c.moveToFirst() || c.getString(0) == null) return;
-              String row = watchNext ? "watch_next" : rowKeyForChannel(prefs, c.getLong(1));
+              String row = watchNext ? WATCH_NEXT_ROW : rowKeyForChannel(prefs, c.getLong(1));
               if (row == null) return;
               Removed removed = new Removed(prefs, PREF_REMOVED + row);
               removed.add(c.getString(0), watchNext ? c.getLong(1) : 0);
@@ -566,6 +610,8 @@ public final class HomeChannels {
             if (watchNext) resolver.delete(uri, null, null);
           } catch (Exception e) {
             Log.w(TAG, "Removal not recorded", e);
+          } finally {
+            if (done != null) done.finish();
           }
         });
   }
@@ -583,7 +629,8 @@ public final class HomeChannels {
 
   // ---------- helpers ----------
 
-  private static void clearAll(Context context, SharedPreferences prefs) {
+  /** Removes all our channels and Continue Watching cards. `keepRemovals` for the same user. */
+  private static void clearAll(Context context, SharedPreferences prefs, boolean keepRemovals) {
     ContentResolver resolver = context.getContentResolver();
     // Only this app's own channels and Watch Next rows are visible to it, so this can't touch others.
     try (Cursor c =
@@ -604,12 +651,18 @@ public final class HomeChannels {
         resolver.delete(TvContract.buildWatchNextProgramUri(c.getLong(0)), null, null);
       }
     }
-    prefs.edit().clear().apply();
+    SharedPreferences.Editor edit = prefs.edit();
+    for (String pref : prefs.getAll().keySet()) {
+      if (keepRemovals && (pref.startsWith(PREF_REMOVED) || pref.equals(PREF_ACCOUNT))) continue;
+      if (pref.equals(PREF_BROWSABLE_ASKED)) continue;
+      edit.remove(pref);
+    }
+    edit.apply();
   }
 
-  private static ContentValues valuesOf(Cursor c, String[] columns, int from) {
+  private static ContentValues valuesOf(Cursor c, String[] columns, int from, int to) {
     ContentValues v = new ContentValues();
-    for (int i = from; i < columns.length; i++) {
+    for (int i = from; i < to; i++) {
       if (c.isNull(i)) v.putNull(columns[i]);
       else v.put(columns[i], c.getString(i));
     }
