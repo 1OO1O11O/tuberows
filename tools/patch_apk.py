@@ -15,10 +15,12 @@ Usage: patch_apk.py <apktool dir>
 import glob, os, re, sys
 
 KEEP_APP_ID = os.environ.get('KEEP_APP_ID') == '1'
+APP_SUFFIX = os.environ.get('APP_SUFFIX', 'hometest')
+APP_LABEL = os.environ.get('APP_LABEL', 'TizenTube Home Test')
 
 d = sys.argv[1]
 OLD_ID = 'io.gh.reisxd.tizentube.cobalt'
-NEW_ID = OLD_ID + '.hometest'
+NEW_ID = OLD_ID + '.' + APP_SUFFIX
 OLD_URL = b'https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js?v='
 NEW_URL = b'https://cdn.jsdelivr.net/gh/1OO1O11O/tuberows@tt/userScriptTest.js?v='
 assert len(OLD_URL) == len(NEW_URL), (len(OLD_URL), len(NEW_URL))
@@ -44,7 +46,7 @@ def rename(s, ns):
     s = s.replace('"' + OLD_ID + '.', '"' + NEW_ID + '.')
     # The app id itself (apktool 3 ignores renameManifestPackage).
     s = s.replace('package="' + OLD_ID + '"', 'package="' + NEW_ID + '"', 1)
-    s = re.sub(r'(<application[^>]*?\b%s:label=")[^"]*"' % ns, r'\1TizenTube Home Test"', s, count=1)
+    s = re.sub(r'(<application[^>]*?\b%s:label=")[^"]*"' % ns, r'\1' + APP_LABEL + '"', s, count=1)
     return s
 edit(os.path.join(d, 'AndroidManifest.xml'), manifest)
 

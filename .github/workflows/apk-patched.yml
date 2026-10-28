@@ -1,8 +1,8 @@
 name: apk-patched
 
-# Builds a drop-in "TizenTube" (same app id as the official app) from the current TizenTube Cobalt
-# release plus the home screen rows patch. Signed with this repo's release key, so later rebuilds
-# install over it without losing sign-in.
+# Builds "TizenTube" with home screen rows (app id io.gh.reisxd.tizentube.cobalt.rows, beside or
+# instead of the official app) from the current TizenTube Cobalt release. Signed with this repo's
+# release key, so later rebuilds install over it without losing sign-in.
 on:
   push:
     branches: ['ci/native-check']
@@ -28,7 +28,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
           KEYSTORE_PASSWORD_RAW: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEEP_APP_ID: '1'
+          APP_SUFFIX: rows
+          APP_LABEL: TizenTube
         run: |
           set -euo pipefail
           LOG="$RUNNER_TEMP/build.txt"; exec > >(tee "$LOG") 2>&1
