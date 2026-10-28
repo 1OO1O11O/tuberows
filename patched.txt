@@ -1,0 +1,23 @@
+release v2.0.3
+===== cobalt-arm
+I: Copying lib...
+I: Copying unknown files...
+url context: <accumulator>|||<error>|<unknown>|||||||<function>||||||<unknown TileResolution value>||<unknown TilePriority::PriorityBin value>|||||||<closure>|||||||<no name>|||||||<redacted>||||||<truncated...>||https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js?v=||| offset=||||||||numbers=||||||||ISO_2022,locale=
+patched /home/runner/work/_temp/w/d_cobalt-arm
+I: Importing unknown files...
+I: Built apk into: /home/runner/work/_temp/w/cobalt-arm-unsigned.apk
+signed TizenTube-Patched-v2.0.3-arm.apk 80919929 bytes
+package: name='io.gh.reisxd.tizentube.cobalt' versionCode='203' versionName='2.0.3' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+uses-permission: name='com.android.providers.tv.permission.WRITE_EPG_DATA'
+application-label:'TizenTube'
+===== cobalt-arm64
+I: Copying lib...
+I: Copying unknown files...
+url context: row_index=| row_index=| aria_cell_column_index=| column_index=| is not less than vea_active_spatial_layers.end_index=|spatial_idx=| scroll_y_max=| scroll_x_max=| scroll_x=|layout (local_size_x=| row=|https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js?v=| aria_cell_row_index_text=| aria_cell_column_index
+patched /home/runner/work/_temp/w/d_cobalt-arm64
+I: Importing unknown files...
+I: Built apk into: /home/runner/work/_temp/w/cobalt-arm64-unsigned.apk
+signed TizenTube-Patched-v2.0.3-arm64.apk 153390453 bytes
+package: name='io.gh.reisxd.tizentube.cobalt' versionCode='203' versionName='2.0.3' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+uses-permission: name='com.android.providers.tv.permission.WRITE_EPG_DATA'
+application-label:'TizenTube'
