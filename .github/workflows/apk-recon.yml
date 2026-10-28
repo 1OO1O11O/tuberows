@@ -7,7 +7,7 @@ on:
     paths: ['.github/workflows/apk-recon.yml']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   recon:
@@ -49,8 +49,11 @@ jobs:
             done
             ls d_$n/assets | head -40 >> "$R"
           done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: recon
-          path: ${{ runner.temp }}/report.txt
-          retention-days: 1
+      - name: Publish report to the ci/out branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP" && mkdir out && cd out && git init -q -b ci/out
+          cp ../report.txt recon.txt && git add recon.txt
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "recon $GITHUB_SHA"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" ci/out
