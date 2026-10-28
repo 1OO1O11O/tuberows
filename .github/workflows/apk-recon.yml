@@ -1,6 +1,6 @@
 name: apk-recon
 
-# Looks inside the current TizenTube Cobalt release so a test build can be patched.
+# Looks inside the current TizenTube Cobalt release so a test build can be patched (and diagnosed).
 on:
   push:
     branches: ['ci/native-check']
