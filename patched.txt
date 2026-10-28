@@ -7,7 +7,7 @@ patched /home/runner/work/_temp/w/d_cobalt-arm
 I: Importing unknown files...
 I: Built apk into: /home/runner/work/_temp/w/cobalt-arm-unsigned.apk
 signed TizenTube-Patched-v2.0.3-arm.apk 80919929 bytes
-package: name='io.gh.reisxd.tizentube.cobalt' versionCode='203' versionName='2.0.3' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+package: name='io.gh.reisxd.tizentube.cobalt.rows' versionCode='203' versionName='2.0.3' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
 uses-permission: name='com.android.providers.tv.permission.WRITE_EPG_DATA'
 application-label:'TizenTube'
 ===== cobalt-arm64
@@ -18,6 +18,6 @@ patched /home/runner/work/_temp/w/d_cobalt-arm64
 I: Importing unknown files...
 I: Built apk into: /home/runner/work/_temp/w/cobalt-arm64-unsigned.apk
 signed TizenTube-Patched-v2.0.3-arm64.apk 153390453 bytes
-package: name='io.gh.reisxd.tizentube.cobalt' versionCode='203' versionName='2.0.3' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+package: name='io.gh.reisxd.tizentube.cobalt.rows' versionCode='203' versionName='2.0.3' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
 uses-permission: name='com.android.providers.tv.permission.WRITE_EPG_DATA'
 application-label:'TizenTube'
