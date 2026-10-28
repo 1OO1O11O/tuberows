@@ -1,0 +1,56 @@
+name: apk-recon
+
+# Looks inside the current TizenTube Cobalt release so a test build can be patched.
+on:
+  push:
+    branches: ['ci/native-check']
+    paths: ['.github/workflows/apk-recon.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          R="$RUNNER_TEMP/report.txt"; W="$RUNNER_TEMP/w"; mkdir -p "$W"; cd "$W"
+          gh release view -R reisxd/TizenTubeCobalt --json tagName,name,publishedAt,assets --jq '.tagName, .publishedAt, (.assets[] | .name + "  " + (.size|tostring))' > "$R" 2>&1
+          gh release download -R reisxd/TizenTubeCobalt -p '*.apk' -D apks >> "$R" 2>&1
+          ls -la apks >> "$R"
+          gh release download -R iBotPeaches/Apktool -p 'apktool_*.jar' -O apktool.jar >> "$R" 2>&1
+          for apk in apks/*.apk; do
+            n=$(basename "$apk" .apk)
+            echo "===== $n" >> "$R"
+            unzip -l "$apk" | grep -vE "res/|META-INF" | head -60 >> "$R"
+            java -jar apktool.jar d -f -o "d_$n" "$apk" > "log_$n.txt" 2>&1 || tail -20 "log_$n.txt" >> "$R"
+            echo "--- manifest" >> "$R"; head -c 6000 "d_$n/AndroidManifest.xml" >> "$R"; echo >> "$R"
+            echo "--- apktool.yml" >> "$R"; head -40 "d_$n/apktool.yml" >> "$R"
+            echo "--- smali dirs" >> "$R"; ls -d d_$n/smali* >> "$R"
+            echo "--- dev/cobalt class count" >> "$R"; find d_$n -path '*dev/cobalt*' -name '*.smali' | wc -l >> "$R"
+            find d_$n -path '*dev/cobalt/coat*' -name '*.smali' | sed 's#.*/dev/cobalt/#dev/cobalt/#' | sort | head -80 >> "$R"
+            echo "--- bridge methods" >> "$R"
+            grep -rn "showAlertDialog\|hasSystemFeature\|initializeJavaBridge\|getJavaScriptInterfaceName\|evaluateJavaScript" d_$n/smali*/dev/cobalt 2>/dev/null | grep "\.method\|const-string" | head -30 >> "$R"
+            f=$(grep -rl "showAlertDialog" d_$n/smali*/dev/cobalt/coat | head -1); echo "file $f" >> "$R"
+            [ -n "$f" ] && { grep -n "^\.class\|^\.super\|^\.field" "$f" | head -40; awk '/\.method.*showAlertDialog/,/\.end method/' "$f"; awk '/\.method.*hasSystemFeature/,/\.end method/' "$f"; } >> "$R"
+            echo "--- userscript hunt" >> "$R"
+            grep -rIl -i "userscript\|tizentube" d_$n/assets d_$n/smali* 2>/dev/null | head -20 >> "$R"
+            for so in $(unzip -l "$apk" | awk '/\.so$/ {print $4}'); do
+              unzip -p "$apk" "$so" | strings -n 8 | grep -iE "userScript|tizentube[a-z./]*\.js|jsdelivr|raw\.githubusercontent|foxreis|reisxd" | sort -u | head -20 | sed "s#^#$so: #" >> "$R"
+            done
+            ls d_$n/assets | head -40 >> "$R"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recon
+          path: ${{ runner.temp }}/report.txt
+          retention-days: 1
