@@ -3,14 +3,18 @@
 
 Usage: patch_apk.py <apktool dir>
 
-- New app id (io.gh.reisxd.tizentube.cobalt.hometest) and label, so it installs beside the real app.
-- Manifest: WRITE_EPG_DATA permission and the card-removed receiver.
+- Test variant: new app id (io.gh.reisxd.tizentube.cobalt.hometest) and label, so it installs
+  beside the real app. With KEEP_APP_ID=1 the app id and label stay TizenTube's own, as a drop-in
+  replacement for the official app.
+- Manifest: the WRITE_EPG_DATA permission.
 - BaseStarboardBridge: ShowAlertDialog("tizentube:home", json) is routed to HomeChannels.publish,
   and HasSystemFeature("tizentube.home_screen") answers true, standing in for the PublishHomeScreen
   IDL method until a real build has it.
 - libchrobalt.so: the userscript URL (same length) points at the test script.
 """
 import glob, os, re, sys
+
+KEEP_APP_ID = os.environ.get('KEEP_APP_ID') == '1'
 
 d = sys.argv[1]
 OLD_ID = 'io.gh.reisxd.tizentube.cobalt'
@@ -30,20 +34,17 @@ def edit(path, fn):
 # ---- manifest
 def manifest(s):
     ns = re.search(r'xmlns:(\w+)="http://schemas.android.com/apk/res/android"', s).group(1)
+    if not KEEP_APP_ID:
+        s = rename(s, ns)
+    perm = '    <uses-permission %s:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />\n' % ns
+    return s.replace('<application', perm + '    <application', 1)
+
+def rename(s, ns):
     # Authorities and package-scoped permission names follow the new id; class names don't use it.
     s = s.replace('"' + OLD_ID + '.', '"' + NEW_ID + '.')
     # The app id itself (apktool 3 ignores renameManifestPackage).
     s = s.replace('package="' + OLD_ID + '"', 'package="' + NEW_ID + '"', 1)
     s = re.sub(r'(<application[^>]*?\b%s:label=")[^"]*"' % ns, r'\1TizenTube Home Test"', s, count=1)
-    perm = '    <uses-permission %s:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />\n' % ns
-    s = s.replace('<application', perm + '    <application', 1)
-    recv = ('        <receiver {n}:name="dev.cobalt.coat.HomeChannelsReceiver" {n}:exported="true">\n'
-            '            <intent-filter>\n'
-            '                <action {n}:name="android.media.tv.action.PREVIEW_PROGRAM_BROWSABLE_DISABLED" />\n'
-            '                <action {n}:name="android.media.tv.action.WATCH_NEXT_PROGRAM_BROWSABLE_DISABLED" />\n'
-            '            </intent-filter>\n'
-            '        </receiver>\n').format(n=ns)
-    s = s.replace('</application>', recv + '    </application>', 1)
     return s
 edit(os.path.join(d, 'AndroidManifest.xml'), manifest)
 

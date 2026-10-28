@@ -1,0 +1,96 @@
+name: apk-patched
+
+# Builds a drop-in "TizenTube" (same app id as the official app) from the current TizenTube Cobalt
+# release plus the home screen rows patch. Signed with this repo's release key, so later rebuilds
+# install over it without losing sign-in.
+on:
+  push:
+    branches: ['ci/native-check']
+    paths: ['.github/workflows/apk-patched.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # only to push the build log to the ci/out branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD_RAW: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEEP_APP_ID: '1'
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/build.txt"; exec > >(tee "$LOG") 2>&1
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          JAR="$ANDROID_HOME/platforms/android-34/android.jar"
+          W="$RUNNER_TEMP/w"; mkdir -p "$W/classes" "$W/dex" "$W/out"
+          TAG="$(gh release view -R reisxd/TizenTubeCobalt --json tagName --jq .tagName)"; echo "release $TAG"
+          gh release download -R reisxd/TizenTubeCobalt -p '*.apk' -D "$W/apks"
+          gh release download -R iBotPeaches/Apktool -p 'apktool_*.jar' -O "$W/apktool.jar"
+
+          javac --release 8 -cp "$JAR" -d "$W/classes" $(find native/src -name '*.java')
+          "$BT/d8" --release --min-api 24 --lib "$JAR" --output "$W/dex" $(find "$W/classes" -name '*.class')
+
+          export KEYSTORE_PASSWORD="$(printf '%s' "$KEYSTORE_PASSWORD_RAW" | tr -d '\r\n')"
+          printf '%s' "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > "$W/release.p12"
+          ALIAS="$(keytool -list -storetype PKCS12 -keystore "$W/release.p12" -storepass:env KEYSTORE_PASSWORD | awk -F, '/PrivateKeyEntry/ && !f { print $1; f = 1 }')"
+          [ -n "$ALIAS" ] || { echo "::error::No private key in the signing keystore"; exit 1; }
+
+          for apk in "$W"/apks/*.apk; do
+            n="$(basename "$apk" .apk)"; d="$W/d_$n"
+            echo "===== $n"
+            java -jar "$W/apktool.jar" d -f -o "$d" "$apk" | tail -2
+            python3 tools/patch_apk.py "$d"
+            java -jar "$W/apktool.jar" b "$d" -o "$W/$n-unsigned.apk" | tail -2
+            next=$(( $(unzip -l "$W/$n-unsigned.apk" | grep -cE ' classes[0-9]*\.dex$') + 1 ))
+            cp "$W/dex/classes.dex" "$W/classes$next.dex"
+            (cd "$W" && zip -q -j "$n-unsigned.apk" "classes$next.dex")
+            "$BT/zipalign" -p -f 4 "$W/$n-unsigned.apk" "$W/$n-aligned.apk"
+            out="$W/out/TizenTube-Patched-${TAG}-${n#cobalt-}.apk"
+            "$BT/apksigner" sign --ks "$W/release.p12" --ks-type PKCS12 --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias "$ALIAS" --out "$out" "$W/$n-aligned.apk"
+            "$BT/apksigner" verify "$out" && echo "signed $(basename "$out") $(stat -c %s "$out") bytes"
+            "$BT/aapt2" dump badging "$out" 2>/dev/null | grep -E "^package|uses-permission: name='com.android.providers.tv|application-label:" || true
+            rm -rf "$d" "$W/$n-unsigned.apk" "$W/$n-aligned.apk"
+          done
+          rm -f "$W/release.p12"
+          echo "out=$W/out" >> "$GITHUB_OUTPUT"
+
+      - name: Upload arm
+        uses: actions/upload-artifact@v4
+        with:
+          name: TizenTube-Patched-arm
+          path: ${{ steps.build.outputs.out }}/*-arm.apk
+          retention-days: 2
+          compression-level: 0
+      - name: Upload arm64
+        uses: actions/upload-artifact@v4
+        with:
+          name: TizenTube-Patched-arm64
+          path: ${{ steps.build.outputs.out }}/*-arm64.apk
+          retention-days: 2
+          compression-level: 0
+
+      - name: Publish build log to the ci/out branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP" && rm -rf outlog && mkdir outlog && cd outlog
+          git init -q -b ci/out
+          git fetch -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" ci/out && git checkout -q FETCH_HEAD || true
+          git checkout -q -B ci/out
+          tail -c 60000 ../build.txt > patched.txt 2>/dev/null || echo "no log" > patched.txt
+          git add patched.txt
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "patched build $GITHUB_RUN_ID" || true
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" ci/out
