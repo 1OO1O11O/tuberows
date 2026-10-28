@@ -14,7 +14,6 @@
 
 package dev.cobalt.coat;
 
-import android.content.BroadcastReceiver;
 import android.content.ContentProviderOperation;
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -38,8 +37,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -51,10 +51,14 @@ import org.json.JSONObject;
  * <p>Rows are app channels ("preview channels"), one per row key; cards are preview programs.
  * Continue Watching cards are Watch Next programs. Every update is a reconcile: only cards that
  * were added, removed or changed are written, so launchers keep the user's place. Anything the user
- * removes from the home screen stays removed (see {@link HomeChannelsReceiver}).
+ * removes from the home screen stays removed: the launcher marks it not browsable, and the next
+ * update records that and never brings it back (Watch Next cards return only once watched again).
+ * There is deliberately no exported receiver for the removal broadcasts, so no other app can reach
+ * this code.
  *
  * <p>All input comes from page script, so it is validated here: ids must look like YouTube ids,
- * images must be on YouTube's image hosts, and every card opens a youtube.com URL in this app.
+ * images must be on YouTube's image hosts, numbers must be in range, and every card opens a
+ * youtube.com URL in this app. Work is bounded: one update runs at a time and at most two wait.
  */
 public final class HomeChannels {
   private static final String TAG = "TizenTubeHome";
@@ -77,10 +81,8 @@ public final class HomeChannels {
   private static final Pattern VIDEO_ID = Pattern.compile("[A-Za-z0-9_-]{11}");
   private static final Pattern PLAYLIST_ID = Pattern.compile("[A-Za-z0-9_-]{2,64}");
   private static final Pattern CHANNEL_ID = Pattern.compile("UC[A-Za-z0-9_-]{22}");
-  private static final Pattern IMAGE =
-      Pattern.compile(
-          "https://[a-z0-9.-]+\\.(ytimg\\.com|ggpht\\.com|googleusercontent\\.com)/[^\\s]{1,1000}",
-          Pattern.CASE_INSENSITIVE);
+  private static final String[] IMAGE_HOSTS = {"ytimg.com", "ggpht.com", "googleusercontent.com"};
+  private static final long MAX_DURATION_SECONDS = 7L * 24 * 60 * 60;
 
   private static final String[] PROGRAM_COLUMNS = {
     TvContract.PreviewPrograms._ID,
@@ -110,8 +112,17 @@ public final class HomeChannels {
     TvContract.WatchNextPrograms.COLUMN_WATCH_NEXT_TYPE,
   };
 
-  // One thread: updates never overlap, and the caller (the renderer's JNI thread) never waits.
-  private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
+  // One thread, so updates never overlap, and the caller (the renderer's JNI thread) never waits.
+  // At most two updates wait; when full, the oldest waiting one is dropped. Every payload carries
+  // the full state of what it covers, so a newer one supersedes it.
+  private static final ThreadPoolExecutor EXECUTOR =
+      new ThreadPoolExecutor(
+          1, 1, 30, TimeUnit.SECONDS, new ArrayBlockingQueue<>(2),
+          new ThreadPoolExecutor.DiscardOldestPolicy());
+
+  static {
+    EXECUTOR.allowCoreThreadTimeOut(true);
+  }
 
   private HomeChannels() {}
 
@@ -191,8 +202,10 @@ public final class HomeChannels {
       c.title = clean(o.optString("title"));
       c.subtitle = clean(o.optString("subtitle"));
       c.image = o.optString("thumb");
-      if (c.title.isEmpty() || !IMAGE.matcher(c.image).matches()) return null;
-      long duration = Math.max(0, o.optLong("duration")) * 1000;
+      if (c.title.isEmpty() || !isImage(c.image)) return null;
+      long seconds = o.optLong("duration");
+      if (seconds < 0 || seconds > MAX_DURATION_SECONDS) seconds = 0;
+      long duration = seconds * 1000;
       c.durationMs = duration;
       c.live = o.optBoolean("live");
 
@@ -204,8 +217,8 @@ public final class HomeChannels {
           String list = o.optString("playlistId");
           if (!watchNext && PLAYLIST_ID.matcher(list).matches()) url.appendQueryParameter("list", list);
           if (watchNext) {
-            long position = Math.max(0, o.optLong("position"));
-            if (duration <= 0 || position * 1000 >= duration) return null;
+            long position = o.optLong("position");
+            if (duration <= 0 || position < 0 || position >= seconds) return null;
             c.positionMs = position * 1000;
             c.engagedAt = Math.min(o.optLong("engagedAt"), System.currentTimeMillis());
             if (c.engagedAt <= 0) return null;
@@ -234,6 +247,20 @@ public final class HomeChannels {
       c.link = url.build();
       return c;
     }
+  }
+
+  /** An https image on YouTube's image hosts, with no user info or unusual port. */
+  static boolean isImage(String url) {
+    if (url == null || url.length() > 1000) return false;
+    Uri uri = Uri.parse(url);
+    String host = uri.getHost();
+    if (!"https".equals(uri.getScheme()) || host == null || uri.getUserInfo() != null) return false;
+    if (uri.getPort() != -1 && uri.getPort() != 443) return false;
+    host = host.toLowerCase(java.util.Locale.ROOT);
+    for (String allowed : IMAGE_HOSTS) {
+      if (host.equals(allowed) || host.endsWith("." + allowed)) return true;
+    }
+    return false;
   }
 
   private static String clean(String s) {
@@ -378,7 +405,7 @@ public final class HomeChannels {
           strays.add(id);
           continue;
         }
-        if (c.getInt(2) == 0) { // Removed by the user, even if we missed the broadcast.
+        if (c.getInt(2) == 0) { // Hidden by the user from the home screen.
           removed.add(key, 0);
           hidden.add(key);
         }
@@ -575,56 +602,6 @@ public final class HomeChannels {
       mPrefs.edit().putStringSet(mPref, out).apply();
       mChanged = false;
     }
-  }
-
-  /** Called by {@link HomeChannelsReceiver} when the user removes a card. */
-  static void onRemoved(
-      Context context, long programId, boolean watchNext, BroadcastReceiver.PendingResult done) {
-    final Context app = context.getApplicationContext();
-    EXECUTOR.execute(
-        () -> {
-          try {
-            ContentResolver resolver = app.getContentResolver();
-            Uri uri = watchNext
-                ? TvContract.buildWatchNextProgramUri(programId)
-                : TvContract.buildPreviewProgramUri(programId);
-            String[] columns = watchNext
-                ? new String[] {
-                  TvContract.WatchNextPrograms.COLUMN_INTERNAL_PROVIDER_ID,
-                  TvContract.WatchNextPrograms.COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS
-                }
-                : new String[] {
-                  TvContract.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID,
-                  TvContract.PreviewPrograms.COLUMN_CHANNEL_ID
-                };
-            SharedPreferences prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            try (Cursor c = resolver.query(uri, columns, null, null, null)) {
-              if (c == null || !c.moveToFirst() || c.getString(0) == null) return;
-              String row = watchNext ? WATCH_NEXT_ROW : rowKeyForChannel(prefs, c.getLong(1));
-              if (row == null) return;
-              Removed removed = new Removed(prefs, PREF_REMOVED + row);
-              removed.add(c.getString(0), watchNext ? c.getLong(1) : 0);
-              removed.save();
-            }
-            // A removed Watch Next card is dropped; a removed row card stays, hidden by the launcher.
-            if (watchNext) resolver.delete(uri, null, null);
-          } catch (Exception e) {
-            Log.w(TAG, "Removal not recorded", e);
-          } finally {
-            if (done != null) done.finish();
-          }
-        });
-  }
-
-  private static String rowKeyForChannel(SharedPreferences prefs, long channelId) {
-    for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
-      if (e.getKey().startsWith(PREF_CHANNEL)
-          && e.getValue() instanceof Long
-          && (Long) e.getValue() == channelId) {
-        return e.getKey().substring(PREF_CHANNEL.length());
-      }
-    }
-    return null;
   }
 
   // ---------- helpers ----------
