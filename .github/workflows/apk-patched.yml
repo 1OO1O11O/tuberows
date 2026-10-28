@@ -56,7 +56,7 @@ jobs:
             next=$(( $(unzip -l "$W/$n-unsigned.apk" | grep -cE ' classes[0-9]*\.dex$') + 1 ))
             cp "$W/dex/classes.dex" "$W/classes$next.dex"
             (cd "$W" && zip -q -j "$n-unsigned.apk" "classes$next.dex")
-            "$BT/zipalign" -p -f 4 "$W/$n-unsigned.apk" "$W/$n-aligned.apk"
+            "$BT/zipalign" -P 16 -f 4 "$W/$n-unsigned.apk" "$W/$n-aligned.apk"
             out="$W/out/TizenTube-Patched-${TAG}-${n#cobalt-}.apk"
             "$BT/apksigner" sign --ks "$W/release.p12" --ks-type PKCS12 --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias "$ALIAS" --out "$out" "$W/$n-aligned.apk"
             "$BT/apksigner" verify "$out" && echo "signed $(basename "$out") $(stat -c %s "$out") bytes"
