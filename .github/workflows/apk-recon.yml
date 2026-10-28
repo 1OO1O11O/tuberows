@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -28,7 +29,7 @@ jobs:
           gh release download -R reisxd/TizenTubeCobalt -p '*.apk' -D apks >> "$R" 2>&1
           ls -la apks >> "$R"
           gh release download -R iBotPeaches/Apktool -p 'apktool_*.jar' -O apktool.jar >> "$R" 2>&1
-          for apk in apks/*.apk; do
+          for apk in apks/cobalt-arm.apk; do
             n=$(basename "$apk" .apk)
             echo "===== $n" >> "$R"
             unzip -l "$apk" | grep -vE "res/|META-INF" | head -60 >> "$R"
@@ -48,6 +49,9 @@ jobs:
               unzip -p "$apk" "$so" | strings -n 8 | grep -iE "userScript|tizentube[a-z./]*\.js|jsdelivr|raw\.githubusercontent|foxreis|reisxd" | sort -u | head -20 | sed "s#^#$so: #" >> "$R"
             done
             ls d_$n/assets | head -40 >> "$R"
+            echo "--- loader" >> "$R"
+            unzip -p "$apk" "$(unzip -l "$apk" | awk '/libchrobalt\.so$/ {print $4}')" > "$W/lib.so"
+            python3 "$GITHUB_WORKSPACE/tools/loader_context.py" "$W/lib.so" >> "$R" 2>&1
           done
       - name: Publish report to the ci/out branch
         env:
