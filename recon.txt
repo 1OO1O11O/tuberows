@@ -1,0 +1,446 @@
+v2.0.3
+2026-10-16T21:44:24Z
+cobalt-arm.apk  80570825
+cobalt-arm64.apk  153048724
+total 228156
+drwxr-xr-x 2 runner runner      4096 Oct 28 05:25 .
+drwxr-xr-x 3 runner runner      4096 Oct 28 05:25 ..
+-rw-r--r-- 1 runner runner  80570825 Oct 28 05:25 cobalt-arm.apk
+-rw-r--r-- 1 runner runner 153048724 Oct 28 05:25 cobalt-arm64.apk
+===== cobalt-arm
+Archive:  apks/cobalt-arm.apk
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+    26212  2001-01-01 00:00   AndroidManifest.xml
+      481  2001-01-01 00:00   assets/images/black_skybox_android_xr_scenecore.exr
+    69836  2001-01-01 00:00   assets/cobalt_logo_1024.png
+   456361  2001-01-01 00:00   assets/cobalt_shell.pak
+    20261  2001-01-01 00:00   assets/fonts/fonts.xml
+  6940384  2001-01-01 00:00   assets/icudtl.dat
+  9719800  2001-01-01 00:00   classes.dex
+ 10662556  2001-01-01 00:00   classes2.dex
+  6575116  2001-01-01 00:00   classes3.dex
+ 60843580  2001-01-01 00:00   lib/armeabi-v7a/libchrobalt.so
+  1198464  2001-01-01 00:00   lib/armeabi-v7a/libchrome_crashpad_handler.so
+  1021104  2001-01-01 00:00   resources.arsc
+       94  2001-01-01 00:00   play-services-ads-identifier.properties
+       94  2001-01-01 00:00   play-services-auth-api-phone.properties
+       74  2001-01-01 00:00   play-services-base.properties
+       82  2001-01-01 00:00   play-services-basement.properties
+       82  2001-01-01 00:00   play-services-location.properties
+       76  2001-01-01 00:00   play-services-tasks.properties
+---------                     -------
+ 98474508                     716 files
+--- manifest
+<?xml version="1.0" encoding="utf-8"?>
+<manifest n0:versionCode="203" n0:versionName="2.0.3" n0:compileSdkVersion="36" n0:compileSdkVersionCodename="16" package="io.gh.reisxd.tizentube.cobalt" platformBuildVersionCode="36" platformBuildVersionName="16"
+  xmlns:n0="http://schemas.android.com/apk/res/android">
+    <uses-feature n0:name="android.hardware.microphone" n0:required="false" />
+    <uses-feature n0:name="android.software.leanback" n0:required="false" />
+    <uses-feature n0:name="android.hardware.touchscreen" n0:required="false" />
+    <uses-feature n0:glEsVersion="0x20000" n0:required="true" />
+    <uses-permission n0:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission n0:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission n0:name="android.permission.CAMERA" />
+    <uses-permission n0:name="android.permission.INTERNET" />
+    <uses-permission n0:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission n0:name="android.permission.RECORD_AUDIO" />
+    <uses-permission n0:name="android.permission.VIBRATE" />
+    <uses-permission n0:name="android.permission.WAKE_LOCK" />
+    <uses-permission n0:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission n0:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission n0:name="android.permission.GET_ACCOUNTS" />
+    <uses-permission n0:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission n0:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission n0:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission n0:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission n0:name="android.permission.GET_TASKS" />
+    <uses-permission n0:name="com.google.android.gms.permission.AD_ID" />
+    <application n0:label="TizenTube" n0:icon="@mipmap/ic_app" n0:name="dev.cobalt.app.CobaltApplication" n0:debuggable="true" n0:banner="@drawable/app_banner" n0:zygotePreloadName="org.chromium.content_public.app.ZygotePreload">
+        <profileable n0:enabled="true" n0:shell="true" />
+        <activity n0:theme="@style/CobaltTheme" n0:name="dev.cobalt.app.MainActivity" n0:exported="true" n0:launchMode="singleTask" n0:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize" n0:windowSoftInputMode="adjustResize" n0:supportsPictureInPicture="true">
+            <meta-data n0:name="cobalt.APP_URL" n0:value="https://www.youtube.com/tv?additionalDataUrl=http://localhost:8012/apps/YouTube" />
+            <meta-data n0:name="cobalt.ENABLE_SPLASH_SCREEN" n0:value="true" />
+            <meta-data n0:name="com.google.android.tv.pip.category" n0:value="communication" />
+            <meta-data n0:name="cobalt.EVERGREEN_LITE" n0:value="false" />
+            <meta-data n0:name="cobalt.ENABLE_FEATURES" n0:value="EnablePerfettoSystemTracing" />
+            <meta-data n0:name="android.app.lib_name" n0:value="cobalt" />
+            <intent-filter>
+                <action n0:name="android.intent.action.MAIN" />
+                <category n0:name="android.intent.category.LAUNCHER" />
+                <category n0:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category n0:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action n0:name="android.intent.action.VIEW" />
+                <action n0:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category n0:name="android.intent.category.DEFAULT" />
+                <category n0:name="android.intent.category.BROWSABLE" />
+                <data n0:scheme="http" />
+                <data n0:scheme="https" />
+                <data n0:host="youtube.com" />
+                <data n0:host="www.youtube.com" />
+                <data n0:host="m.youtube.com" />
+                <data n0:host="youtu.be" />
+                <data n0:pathPattern=".*" />
+            </intent-filter>
+        </activity>
+        <activity n0:theme="@style/CobaltTheme" n0:name="dev.cobalt.coat.CobaltPictureInPictureActivity" n0:exported="false" n0:excludeFromRecents="true" n0:configChanges="orientation|screenLayout|screenSize|smallestScreenSize" n0:noHistory="true" n0:supportsPictureInPicture="true" />
+        <meta-data n0:name="org.chromium.content.browser.NUM_SANDBOXED_SERVICES" n0:value="40" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService0" n0:exported="false" n0:process=":sandboxed_process0" n0:isolatedProcess="true" n0:useAppZygote="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService1" n0:exported="false" n0:process=":sandboxed_process1" n0:isolatedProcess="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService2" n0:exported="false" n0:process=":sandboxed_process2" n0:isolatedProcess="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService3" n0:exported="false" n0:process=":sandboxed_process3" n0:isolatedProcess="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService4" n0:exported="false" n0:process=":sandboxed_process4" n0:isolatedProcess="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService5" n0:exported="false" n0:process=":sandboxed_process5" n0:isolatedProcess="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService6" n0:exported="false" n0:process=":sandboxed_process6" n0:isolatedProcess="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService7" n0:exported="false" n0:process=":sandboxed_process7" n0:isolatedProcess="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService8" n0:exported="false" n0:process=":sandboxed_process8" n0:isolatedProcess="true" />
+        <service n0:name="org.chromium.content.app.SandboxedProcessService9" n0:exported="false" n0:process=":sandboxed_process9" n0:isolatedPro
+--- apktool.yml
+version: 3.0.3
+apkFileName: cobalt-arm.apk
+usesFramework:
+  ids:
+  - 1
+sdkInfo:
+  minSdkVersion: 24
+  targetSdkVersion: 36
+versionInfo:
+  versionCode: 203
+  versionName: 2.0.3
+resourcesInfo:
+  packageId: 127
+doNotCompress:
+- arsc
+- ogg
+- png
+- so
+- wav
+- META-INF/services/androidx.xr.runtime.StateExtender
+- META-INF/services/androidx.xr.runtime.internal.RuntimeFactory
+- META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler
+- META-INF/services/kotlinx.coroutines.internal.MainDispatcherFactory
+- assets/cobalt_shell.pak
+- assets/fonts/fonts.xml
+- assets/icudtl.dat
+- res/drawable-hdpi/abc_btn_check_to_on_mtrl_000
+- res/drawable-hdpi/abc_btn_check_to_on_mtrl_015
+- res/drawable-hdpi/abc_btn_radio_to_on_mtrl_000
+- res/drawable-hdpi/abc_btn_radio_to_on_mtrl_015
+- res/drawable-hdpi/abc_ic_commit_search_api_mtrl_alpha
+- res/drawable-hdpi/abc_scrubber_control_off_mtrl_alpha
+- res/drawable-hdpi/abc_scrubber_control_to_pressed_mtrl_000
+- res/drawable-hdpi/abc_scrubber_control_to_pressed_mtrl_005
+- res/drawable-hdpi/abc_text_select_handle_left_mtrl
+- res/drawable-hdpi/abc_text_select_handle_middle_mtrl
+- res/drawable-hdpi/abc_text_select_handle_right_mtrl
+- res/drawable-hdpi/app_banner
+- res/drawable-hdpi/btn_close
+- res/drawable-hdpi/color_picker_advanced_select_handle
+--- smali dirs
+d_cobalt-arm/smali
+d_cobalt-arm/smali_classes2
+d_cobalt-arm/smali_classes3
+--- dev/cobalt class count
+297
+dev/cobalt/coat/AdvertisingId$$ExternalSyntheticLambda0.smali
+dev/cobalt/coat/AdvertisingId.smali
+dev/cobalt/coat/AppEventBridge$Natives.smali
+dev/cobalt/coat/AppEventBridge.smali
+dev/cobalt/coat/AppEventBridgeJni.smali
+dev/cobalt/coat/ArtworkDownloader.smali
+dev/cobalt/coat/ArtworkDownloaderDefault.smali
+dev/cobalt/coat/ArtworkLoader$1.smali
+dev/cobalt/coat/ArtworkLoader$Callback.smali
+dev/cobalt/coat/ArtworkLoader$DownloadArtworkThread.smali
+dev/cobalt/coat/ArtworkLoader.smali
+dev/cobalt/coat/AudioPermissionRequester.smali
+dev/cobalt/coat/BaseCobaltActivity.smali
+dev/cobalt/coat/BaseStarboardBridge$$ExternalSyntheticLambda0.smali
+dev/cobalt/coat/BaseStarboardBridge$$ExternalSyntheticLambda1.smali
+dev/cobalt/coat/BaseStarboardBridge$$ExternalSyntheticLambda2.smali
+dev/cobalt/coat/BaseStarboardBridge$1.smali
+dev/cobalt/coat/BaseStarboardBridge$ApiHelperForR.smali
+dev/cobalt/coat/BaseStarboardBridge$HostApplication.smali
+dev/cobalt/coat/BaseStarboardBridge$Natives.smali
+dev/cobalt/coat/BaseStarboardBridge$Size.smali
+dev/cobalt/coat/BaseStarboardBridge.smali
+dev/cobalt/coat/BaseStarboardBridgeJni.smali
+dev/cobalt/coat/CaptionSettings.smali
+dev/cobalt/coat/CobaltA11yHelper$1.smali
+dev/cobalt/coat/CobaltA11yHelper$2.smali
+dev/cobalt/coat/CobaltA11yHelper.smali
+dev/cobalt/coat/CobaltActivity$$ExternalSyntheticLambda0.smali
+dev/cobalt/coat/CobaltActivity$$ExternalSyntheticLambda1.smali
+dev/cobalt/coat/CobaltActivity$$ExternalSyntheticLambda2.smali
+dev/cobalt/coat/CobaltActivity$1.smali
+dev/cobalt/coat/CobaltActivity$10.smali
+dev/cobalt/coat/CobaltActivity$2.smali
+dev/cobalt/coat/CobaltActivity$3.smali
+dev/cobalt/coat/CobaltActivity$4.smali
+dev/cobalt/coat/CobaltActivity$5.smali
+dev/cobalt/coat/CobaltActivity$6.smali
+dev/cobalt/coat/CobaltActivity$7.smali
+dev/cobalt/coat/CobaltActivity$8.smali
+dev/cobalt/coat/CobaltActivity$9.smali
+dev/cobalt/coat/CobaltActivity$OnBackInvokedHelper$1$1.smali
+dev/cobalt/coat/CobaltActivity$OnBackInvokedHelper$1.smali
+dev/cobalt/coat/CobaltActivity$OnBackInvokedHelper.smali
+dev/cobalt/coat/CobaltActivity.smali
+dev/cobalt/coat/CobaltBuildInfo.smali
+dev/cobalt/coat/CobaltMediaSession$1$1.smali
+dev/cobalt/coat/CobaltMediaSession$1$2.smali
+dev/cobalt/coat/CobaltMediaSession$1.smali
+dev/cobalt/coat/CobaltMediaSession$2.smali
+dev/cobalt/coat/CobaltMediaSession$3.smali
+dev/cobalt/coat/CobaltMediaSession$LifecycleCallback.smali
+dev/cobalt/coat/CobaltMediaSession.smali
+dev/cobalt/coat/CobaltPictureInPictureActivity$1.smali
+dev/cobalt/coat/CobaltPictureInPictureActivity$Natives.smali
+dev/cobalt/coat/CobaltPictureInPictureActivity.smali
+dev/cobalt/coat/CobaltPictureInPictureActivityJni.smali
+dev/cobalt/coat/CobaltService$Factory.smali
+dev/cobalt/coat/CobaltService$Natives.smali
+dev/cobalt/coat/CobaltService$ResponseToClient.smali
+dev/cobalt/coat/CobaltService.smali
+dev/cobalt/coat/CobaltServiceJni.smali
+dev/cobalt/coat/CobaltSystemConfigChangeReceiver$Natives.smali
+dev/cobalt/coat/CobaltSystemConfigChangeReceiver.smali
+dev/cobalt/coat/CobaltSystemConfigChangeReceiverJni.smali
+dev/cobalt/coat/CobaltTextToSpeechHelper$1.smali
+dev/cobalt/coat/CobaltTextToSpeechHelper$2.smali
+dev/cobalt/coat/CobaltTextToSpeechHelper$3.smali
+dev/cobalt/coat/CobaltTextToSpeechHelper$4.smali
+dev/cobalt/coat/CobaltTextToSpeechHelper$Natives.smali
+dev/cobalt/coat/CobaltTextToSpeechHelper$State.smali
+dev/cobalt/coat/CobaltTextToSpeechHelper.smali
+dev/cobalt/coat/CobaltTextToSpeechHelperJni.smali
+dev/cobalt/coat/CommandLineOverrideHelper.smali
+dev/cobalt/coat/CrashContext.smali
+dev/cobalt/coat/CrashContextUpdateHandler.smali
+dev/cobalt/coat/ErrorDialog$1.smali
+dev/cobalt/coat/ErrorDialog$Builder.smali
+dev/cobalt/coat/ErrorDialog$Params.smali
+dev/cobalt/coat/ErrorDialog-IA.smali
+dev/cobalt/coat/ErrorDialog.smali
+--- bridge methods
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/javabridge/AmatiDeviceInspector.smali:38:.method public getJavaScriptInterfaceName()Ljava/lang/String;
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/javabridge/HTMLMediaElementExtension.smali:68:.method public getJavaScriptInterfaceName()Ljava/lang/String;
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/javabridge/CobaltJavaScriptAndroidObject.smali:7:.method public abstract getJavaScriptInterfaceName()Ljava/lang/String;
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/BaseStarboardBridge.smali:1178:.method static synthetic lambda$showAlertDialog$2(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;)V
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/BaseStarboardBridge.smali:3059:.method protected hasSystemFeature(Ljava/lang/String;)Z
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/BaseStarboardBridge.smali:4964:.method protected showAlertDialog(Ljava/lang/String;Ljava/lang/String;)V
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/CobaltActivity.smali:188:.method static bridge synthetic -$$Nest$minitializeJavaBridge(Ldev/cobalt/coat/CobaltActivity;)V
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/CobaltActivity.smali:901:.method private initializeJavaBridge()V
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/CobaltActivity.smali:911:    const-string v2, "initializeJavaBridge"
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/CobaltActivity.smali:1024:    const-string/jumbo v2, "webContents is null in initializeJavaBridge. This should never happen."
+d_cobalt-arm/smali_classes2/dev/cobalt/coat/CobaltActivity.smali:2129:.method public evaluateJavaScript(Ljava/lang/String;)V
+file d_cobalt-arm/smali_classes2/dev/cobalt/coat/BaseStarboardBridge.smali
+1:.class public Ldev/cobalt/coat/BaseStarboardBridge;
+2:.super Ljava/lang/Object;
+22:.field private static final AMATI_EXPERIENCE_FEATURE:Ljava/lang/String; = "com.google.android.feature.AMATI_EXPERIENCE"
+24:.field private static final DEFAULT_DEVICE_NAME:Ljava/lang/String; = "Android"
+26:.field private static final DEFAULT_TIME_ZONE:Ljava/util/TimeZone;
+28:.field private static final GOOGLE_PLAY_SERVICES_PACKAGE:Ljava/lang/String; = "com.google.android.gms"
+30:.field private static final YTS_CERT_SCOPE_SYSTEM_PROPERTY:Ljava/lang/String; = "ro.vendor.youtube.cert_scope"
+32:.field private static sActivityLifecycleCoordinationEnabledForTesting:Ljava/lang/Boolean;
+34:.field private static volatile sInstance:Ldev/cobalt/coat/BaseStarboardBridge;
+36:.field private static volatile sWasLowMemoryKilledForTesting:Ljava/lang/Boolean;
+40:.field private final mActivities:Ljava/util/Map;
+51:.field protected final mActivityHolder:Ldev/cobalt/util/Holder;
+61:.field private final mAdvertisingId:Ldev/cobalt/coat/AdvertisingId;
+63:.field private final mAppContext:Landroid/content/Context;
+65:.field private mAppStartTimestamp:J
+67:.field private volatile mApplicationStarted:Z
+69:.field private volatile mApplicationStopped:Z
+71:.field private final mArgs:[Ljava/lang/String;
+73:.field private final mAudioOutputManager:Ldev/cobalt/media/AudioOutputManager;
+75:.field private final mAudioPermissionRequester:Ldev/cobalt/coat/AudioPermissionRequester;
+77:.field private final mCobaltServiceFactories:Ljava/util/Map;
+88:.field private final mCobaltServices:Ljava/util/Map;
+99:.field private final mIsAmatiDevice:Z
+101:.field private final mNativeApp:J
+103:.field private final mNatives:Ldev/cobalt/coat/BaseStarboardBridge$Natives;
+105:.field private final mResourceOverlay:Ldev/cobalt/coat/ResourceOverlay;
+107:.field private final mServiceHolder:Ldev/cobalt/util/Holder;
+117:.field private final mStopRequester:Ljava/lang/Runnable;
+119:.field private final mSysConfigChangeReceiver:Ldev/cobalt/coat/CobaltSystemConfigChangeReceiver;
+121:.field private final mTimeNanosecondsPerMicrosecond:J
+123:.field private final mTtsHelper:Ldev/cobalt/coat/CobaltTextToSpeechHelper;
+125:.field private mVideoSurface:Landroid/view/Surface;
+127:.field private final mVideoSurfaceLock:Ljava/lang/Object;
+.method static synthetic lambda$showAlertDialog$2(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;)V
+    .locals 3
+    .param p0, "activity"    # Landroid/app/Activity;
+    .param p1, "title"    # Ljava/lang/String;
+    .param p2, "message"    # Ljava/lang/String;
+
+    .line 1178
+    new-instance v0, Landroid/app/AlertDialog$Builder;
+
+    invoke-direct {v0, p0}, Landroid/app/AlertDialog$Builder;-><init>(Landroid/content/Context;)V
+
+    .line 1179
+    invoke-virtual {v0, p1}, Landroid/app/AlertDialog$Builder;->setTitle(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
+
+    move-result-object v0
+
+    .line 1180
+    invoke-virtual {v0, p2}, Landroid/app/AlertDialog$Builder;->setMessage(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;
+
+    move-result-object v0
+
+    .line 1181
+    const v1, 0x104000a
+
+    const/4 v2, 0x0
+
+    invoke-virtual {v0, v1, v2}, Landroid/app/AlertDialog$Builder;->setPositiveButton(ILandroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;
+
+    move-result-object v0
+
+    .line 1182
+    invoke-virtual {v0}, Landroid/app/AlertDialog$Builder;->show()Landroid/app/AlertDialog;
+
+    .line 1183
+    return-void
+.end method
+.method protected showAlertDialog(Ljava/lang/String;Ljava/lang/String;)V
+    .locals 2
+    .param p1, "title"    # Ljava/lang/String;
+    .param p2, "message"    # Ljava/lang/String;
+    .annotation system Ldalvik/annotation/MethodParameters;
+        accessFlags = {
+            0x0,
+            0x0
+        }
+        names = {
+            "title",
+            "message"
+        }
+    .end annotation
+
+    .line 1175
+    iget-object v0, p0, Ldev/cobalt/coat/BaseStarboardBridge;->mActivityHolder:Ldev/cobalt/util/Holder;
+
+    invoke-virtual {v0}, Ldev/cobalt/util/Holder;->get()Ljava/lang/Object;
+
+    move-result-object v0
+
+    check-cast v0, Landroid/app/Activity;
+
+    .line 1176
+    .local v0, "activity":Landroid/app/Activity;
+    if-nez v0, :cond_0
+
+    return-void
+
+    .line 1177
+    :cond_0
+    new-instance v1, Ldev/cobalt/coat/BaseStarboardBridge$$ExternalSyntheticLambda1;
+
+    invoke-direct {v1, v0, p1, p2}, Ldev/cobalt/coat/BaseStarboardBridge$$ExternalSyntheticLambda1;-><init>(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;)V
+
+    invoke-virtual {v0, v1}, Landroid/app/Activity;->runOnUiThread(Ljava/lang/Runnable;)V
+
+    .line 1184
+    return-void
+.end method
+.method protected hasSystemFeature(Ljava/lang/String;)Z
+    .locals 1
+    .param p1, "featureName"    # Ljava/lang/String;
+    .annotation system Ldalvik/annotation/MethodParameters;
+        accessFlags = {
+            0x0
+        }
+        names = {
+            "featureName"
+        }
+    .end annotation
+
+    .line 1170
+    iget-object v0, p0, Ldev/cobalt/coat/BaseStarboardBridge;->mAppContext:Landroid/content/Context;
+
+    invoke-virtual {v0}, Landroid/content/Context;->getPackageManager()Landroid/content/pm/PackageManager;
+
+    move-result-object v0
+
+    invoke-virtual {v0, p1}, Landroid/content/pm/PackageManager;->hasSystemFeature(Ljava/lang/String;)Z
+
+    move-result v0
+
+    return v0
+.end method
+--- userscript hunt
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$styleable.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$raw.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$array.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$id.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$mipmap.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$plurals.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$integer.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$attr.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$overlayable.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$anim.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$macro.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$string.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$drawable.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$xml.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$fraction.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$dimen.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$style.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$layout.smali
+d_cobalt-arm/smali_classes2/io/gh/reisxd/tizentube/cobalt/R$font.smali
+lib/armeabi-v7a/libchrobalt.so:               console.error('JSDelivr is not reachable. Status:', response.status);
+lib/armeabi-v7a/libchrobalt.so:         fetch('https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js', { method: 'HEAD' })
+lib/armeabi-v7a/libchrobalt.so:       const errMsg = 'JSDelivr is not reachable, TizenTube userscript will not be loaded. This can happen due to network issues (such as your DNS server not resolving cdn.jsdelivr.net) or if your ISP is blocking access to JSDelivr.';
+lib/armeabi-v7a/libchrobalt.so: /home/reisxd/TizenTubeCobalt/src/out/android-arm_gold
+lib/armeabi-v7a/libchrobalt.so: cdn.jsdelivr.net
+lib/armeabi-v7a/libchrobalt.so: https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js?v=
+lib/armeabi-v7a/libchrome_crashpad_handler.so: /home/reisxd/TizenTubeCobalt/src/out/android-arm_gold
+cobalt_logo_1024.png
+cobalt_shell.pak
+fonts
+icudtl.dat
+images
+--- loader
+loader script bytes 686
+
+      const errMsg = 'JSDelivr is not reachable, TizenTube userscript will not be loaded. This can happen due to network issues (such as your DNS server not resolving cdn.jsdelivr.net) or if your ISP is blocking access to JSDelivr.';
+        fetch('https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js', { method: 'HEAD' })
+          .then(response => {
+            if (!response.ok) {
+              console.error('JSDelivr is not reachable. Status:', response.status);
+              h5vcc.tizentube.ShowAlertDialog('Error', errMsg);
+            }
+          })
+          .catch(error => {
+            h5vcc.tizentube.ShowAlertDialog('Error', errMsg);
+          });
+      
+sha256-qjQ57Rf8hNJz9v4fodmIEyMn2SfI2AINcU9LyrnZ8Qw=
+sha256-qCcarSCUWHWn2TSfk2/dxgDuWyNrHlJAfnTPuDzTYpc=
+b'Content-Security-Policy' 20 ['r_StylePropertyMapReadOnly|ariaReadOnly|RasterOverGLES2Only|Content-Security-Policy-Report-Only|Integrity-Policy-Report-Only|Document-Policy-Report-Only|Permiss', 'olicy|kErrorCrossOriginResourcePolicy|virtualKeyboardPolicy|Content-Security-Policy|Integrity-Policy|Require-Document-Policy|Sec-Required-Document-Policy|Permis', "ur' event handler?|missing rp backing-6-with quad clip?|The Content-Security-Policy directive '%s' contains '%s' as a source expression. Did you want to add it "]
+b'unsafe-inline' 6 [".| is greated than the length of the rule list.| Note that 'unsafe-inline' is ignored if either a hash or nonce value is present in the source list.|Invalid tex", "effect.|The 'options' directive has been replaced with the 'unsafe-inline' and 'unsafe-eval' source expressions for the 'script-src' and 'style-src' directives.", "or 'None'|functions cannot be both 'inline' and 'noinline'|'unsafe-inline'|'report-sample'|'while'|expected 'require', 'enable', 'warn', or 'disable'|'cobalt-in"]
+b'script-src' 16 ['BajaSur|repeatDur|blink.ElementLocator.Component.Id.id_attr|script-src-attr|style-src-attr|argsAttr|dynamicColorAttr|CSSShortCircuitVarAttr|loadingAttr|curveTyp', 'mem|Pss_Shmem|/proc/self/mem|array.new_elem|array.init_elem|script-src-elem|style-src-elem|$elem|Cookie.CommitProblem|Cookie.LoadProblem|Asia/Jerusalem|ethiopic', 'effects_src|startup_src|blend_src|embedded_src|manifest-src|script-src|font-src|default-src|connect-src|object-src|worker-src|cobalt-location-src|h5vcc-location']
+b'sha256-[A-Za-z0-9+/=]{20,}' 0 []
+b'bypass[_-]?csp' 0 []
+b'disable[_-]?csp' 0 []
+b'BypassCSP' 0 []
+b'csp' 134 ['lcpy_chk|gai_strerror|cbrt|sem_destroy|nextafterf|strspn|strcspn|strstr|cbrtf|setjmp|longjmp|qsort|pthread_mutex_destroy|feof|strncpy|floorf|roundf|strlcpy|AAud', 'eport|SaveTraceForBugreport|VK_EXT_debug_report|application/csp-report|unexpected parser state - please send a bug report|unknown tag in NativeStabilityReport|H', 'led: %s|Compiling function #%d:"%.*s" failed: %s|The frame \'csp\' attribute (\'%s\') is invalid and will be discarded: %s|%s:%d: %s|Unsupported audio codec: %s|Uns']
+=== around ?v= url
+||||INVALID|invalid client ID|||||||Invalid scroll ancestor ID||||||Invalid or duplicate layer ID|||Invalid layer ID||||||||Invalid buffer ID|||||||Unexpected duplicate animation ID|||||||Invalid texture ID||||||Invalid property tree node ID|||DISTRUSTED||||||VOICE_ISOLATION_SUPPORTED|||||||P60REDACTED|||||FILE_ERROR_TOO_MANY_OPENED||||||FILE_ERROR_FAILED|||||||FILE_ERROR_ACCESS_DENIED||||||||glTexStorage3D||glTexImage3D||||glCompressedTexImage3D||glCopyTexSubImage3D|||||glTexSubImage3D|glCompressedTexSubImage3D|||||||GL_OES_texture_3D|||||||usampler2D||||||sampler2D|||||||texture2D|||||||glFramebufferTexture2D||glTexStorage2D||glCopyTexImage2D||||||||glTexImage2D||||glCompressedTexImage2D||glCopyTexSubImage2D|||||glTexSubImage2D|glCompressedTexSubImage2D|||||||GL_EXT_framebuffer_sRGB|GL_ARB_framebuffer_sRGB|GL_EXT_texture_sRGB|||||GL_IMG_texture_compression_pvrtc GL_EXT_pvrtc_sRGB||||||GL_EXT_pvrtc_sRGB|||||||GL_EXT_sRGB|||||PIXEL_FORMAT_XRGB|||||||PIXEL_FORMAT_ARGB|||||||glFramebufferParameteriMESA|||||PIXEL_FORMAT_BGRA|||||||FUCHSIA_RENDER_USAGE_MEDIA||||||PIXEL_FORMAT_I444A||||||PIXEL_FORMAT_I422A||||||PIXEL_FORMAT_NV12A||||||PIXEL_FORMAT_I420A||||||floatish|double?||||||||float?|double?||double?|<context>|||||||<anonymous>|||||<accumulator>|||<error>|<unknown>|||||||<function>||||||<unknown TileResolution value>||<unknown TilePriority::PriorityBin value>|||||||<closure>|||||||<no name>|||||||<redacted>||||||<truncated...>||https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js?v=||| offset=||||||||numbers=||||||||ISO_2022,locale=ja,version=||||| align=|return;|continue;|||||||exceeded max function call depth:|||||||GroupMarkerNotSet(crbug.com/242999)!:|||GL ERROR :||||||EGL_ANGLE_device_d3d9|||GL_OES_texture_stencil8|GL_ARB_texture_stencil8|GL_ARM_rgba8||||GL_OES_rgb8_rgba8|||||||GL_EXT_texture_sRGB_R8||GL_EXT_texture_sRGB_RG8|GL_EXT_texture_format_BGRA8888||GL_EXT_texture_norm16|||PIXEL_FORMAT_Y16||||||||PIXEL_FORMAT_NV16|||||||PIXEL_FORMAT_RGBAF16||||GL_ANGLE_texture_compression_dxt5|||||||GL_EXT_gpu_shader5||||||GL_OES_gpu_shader5||||||GL_ARB_gpu_shader5||||||GL_EXT_texture_compression_astc_decode_mode_rgb9e5||||||PIXEL_FORMAT_I444|||||||GL_OES_depth24||PIXEL_FORMAT_NV24|||||||PIXEL_FORMAT_RGB24||||||Pixel 4|GL_ANGLE_texture_compression_dxt
+=== userscript-ish strings
+              h5vcc.tizentube.ShowAlertDialog('Error', errMsg);
+            h5vcc.tizentube.ShowAlertDialog('Error', errMsg);
+        fetch('https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js', { method: 'HEAD' })
+      const errMsg = 'JSDelivr is not reachable, TizenTube userscript will not be loaded. This can happen due to network issues (such as your DNS server not resolving cdn.jsdelivr.net) or i
+/home/reisxd/TizenTubeCobalt/src/out/android-arm_gold
+H5vccTizenTube
+Unable to connect to h5vcc_tizentube service
+h5vcc_tizentube.mojom.H5vccTizentube
+https://cdn.jsdelivr.net/npm/@foxreis/tizentube/dist/userScript.js?v=
+tizentube
+tizentube.app
